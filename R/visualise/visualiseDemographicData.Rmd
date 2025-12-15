@@ -1,0 +1,660 @@
+---
+title: "Magpie Demographic Figures"
+output: html_document
+---
+
+# Demographic information: Magpie
+
+This contains a bunch of figures and statistics about the demographic data for the Magpie run from August 2024. We start by loading the data and doing some basic cleaning.
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+rm(list=ls())
+
+# load the packages
+library(here)
+library(tidyverse)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(ggdist)
+library(ggridges)
+source(here("R/visualise/supplementaryFunctions.R"))
+
+# Define subfolders
+processed_files_mastodon_dir <- "data/mastodon/files/processed"
+raw_files_mastodon_dir <- "data/mastodon/files/raw"
+figures_files_mastodon_dir <- "data/mastodon/files/figures"
+all_char_cols <- cols(.default = "c")
+DRY_RUN <- FALSE
+```
+
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+# set the colours
+polarityColours <- c("left"="#3399CC","na"="#9999FF","right"="#CC0066")
+politicalIDColours <- c("democrat"="#3399CC","independent"="#9999FF",
+                     "republican"="#CC0066")
+
+goodBadColour <- c("#00AA11","#BB0000")
+
+#conditionColours <- c("Control"="#44AA44","Right"="#660066")
+
+conditionColours <- c("Left"="#99CCFF",
+                      "Control"="#339933","Right"="#FF99CC")
+
+# read all of the files
+dc <- read_csv(here(processed_files_mastodon_dir, "control", "data_demographics_all.csv"),
+               col_types = all_char_cols)
+dca <- read_csv(here(processed_files_mastodon_dir, "control", "data_after_demographics.csv"),
+                col_types = all_char_cols)
+dr <- read_csv(here(processed_files_mastodon_dir, "right", "data_demographics_all.csv"),
+               col_types = all_char_cols)
+dra <- read_csv(here(processed_files_mastodon_dir, "right", "data_after_demographics.csv"),
+                col_types = all_char_cols)
+dl <- read_csv(here(processed_files_mastodon_dir, "left", "data_demographics_all.csv"),
+               col_types = all_char_cols)
+dla <- read_csv(here(processed_files_mastodon_dir, "left", "data_after_demographics.csv"),
+                col_types = all_char_cols)
+
+# remove the people who did not complete the After survey
+# save them in a file in case need to look at later
+dc_first <- dc[!(dc$Subject %in% dca$Subject),]
+dr_first <- dr[!(dr$Subject %in% dra$Subject),]
+dl_first <- dl[!(dl$Subject %in% dla$Subject),]
+d_first <- rbind(dc_first,dr_first,dl_first)
+
+demographics_first_file <- here(processed_files_mastodon_dir, "combined", 
+                          "firstonly", "demographics.csv")
+d_first %>% save_processed_file(file = demographics_first_file)
+
+dc_both <- dc[dc$Subject %in% dca$Subject,]
+dr_both <- dr[dr$Subject %in% dra$Subject,]
+dl_both <- dl[dl$Subject %in% dla$Subject,]
+
+# combine all of the files
+dcc <- dc_both %>%
+  select(Subject,UserName,Condition,TimePoint,Duration,LAT,LON,Duration,
+         CheckCorr)
+d_control <- rbind(dcc,dca)
+dcc <- dc_both %>%
+  select(-c(Duration,LAT,LON,Duration,CheckCorr))
+d_control <- d_control %>%
+  left_join(dc_both,by=c("Subject","UserName","Condition","TimePoint",
+                         "Duration","LAT","LON","CheckCorr"))
+
+drr <- dr_both %>%
+  select(Subject,UserName,Condition,TimePoint,Duration,LAT,LON,Duration,CheckCorr)
+d_right <- rbind(drr,dra)
+drr <- dr_both %>%
+  select(-c(Duration,LAT,LON,Duration,CheckCorr))
+d_right <- d_right %>%
+  left_join(dr_both,by=c("Subject","UserName","Condition","TimePoint",
+                         "Duration","LAT","LON","CheckCorr"))
+
+dll <- dl_both %>%
+  select(Subject,UserName,Condition,TimePoint,Duration,LAT,LON,Duration,CheckCorr)
+d_left <- rbind(dll,dla)
+dll <- dl_both %>%
+  select(-c(Duration,LAT,LON,Duration,CheckCorr))
+d_left <- d_left %>%
+  left_join(dl_both,by=c("Subject","UserName","Condition","TimePoint",
+                         "Duration","LAT","LON","CheckCorr"))
+
+# combine into one full dataset
+d <- rbind(d_control,d_right,d_left)
+
+# calculate the number in each condition
+nCfirst <- nrow(dc_first)
+nCboth <- nrow(dc_both)
+nCtotal <- nCfirst + nCboth
+nRfirst <- nrow(dr_first)
+nRboth <- nrow(dr_both)
+nRtotal <- nRfirst + nRboth
+nLfirst <- nrow(dl_first)
+nLboth <- nrow(dl_both)
+nLtotal <- nLfirst + nLboth
+
+# set factor levels to be nice
+d$Condition <- factor(d$Condition, levels=c("Left","Control","Right"))
+d$Gender <- factor(d$Gender, 
+                    levels = c("male","female","nbqueer","other"))
+d$Sex <- factor(d$Sex, levels = c("male","female","other"))
+d$Election2020 <- factor(d$Election2020, 
+                    levels = c("biden","trump","norecall",
+                               "novote","other"))
+d$Trans <- factor(d$Trans, levels = c("yes","no"))
+d$LGBT <- factor(d$LGBT, levels = c("yes","no"))
+d$Orientation <- factor(d$Orientation, 
+                         levels = c("straight","gay","queer"))
+d$English <- factor(d$English, levels = c("native","good","poor"))
+d$Race <- factor(d$Race, levels = c("white","black","hispanic",
+                                     "asian","indian","mideast",
+                                     "multracial","other"))
+d$Education <- factor(d$Education, 
+                       levels = c("highschool","somecollege",
+                                  "undergrad","postgrad"))
+d$Religion <- factor(d$Religion,
+                      levels=c("christian","mormon","jewish",
+                               "eastern","muslim","other","none"))
+d$PoliticalID <- factor(d$PoliticalID,
+                      levels=c("democrat","independent","republican"))
+
+d <- d %>%   
+  mutate(across(c(
+    Duration, LAT, LON, Age, EducationNum, BackgroundNum,
+    QualityAverage, QualityOverall, QualitySocial, QualityMental, QualityPhysical,
+    IncomeRelative, IncomeSatisfaction,
+    PoliticalIDNum, SocialMediaMax, SocialMediaAverage
+  ), as.numeric))
+
+
+# save combined files
+demographics_file <- here(processed_files_mastodon_dir, "combined", "demographics.csv")
+d %>% save_processed_file(file = demographics_file)
+
+# remove extra things to keep space tidy
+rm(dcc,dtt,dc,dt,dca,dta,dc_first,dt_first,d_first,dc_both,dt_both)
+
+```
+
+There were `r nCboth` in the final sample in the **Control** condition (`r nCtotal` were run initially, and of those, `r nCfirst` only completed the Before survey).
+
+There were `r nTboth` in the final sample in the **Right** condition (`r nTtotal` were run initially, and of those, `r nTfirst` only completed the Before survey).
+
+All analyses are only on the final sample of `r nCboth + nTboth` unless otherwise stated.
+
+## Demographic analysis
+
+### Gender
+
+Overall there were `r table(d$Gender)[[1]]` (`r round(100*table(d$Gender)[[1]]/sum(table(d$Gender)))`%) males, `r table(d$Gender)[[2]]` (`r round(100*table(d$Gender)[[2]]/sum(table(d$Gender)))`%) females, `r table(d$Gender)[[3]]` (`r round(100*table(d$Gender)[[3]]/sum(table(d$Gender)))`%) non-binary people, and `r table(d$Gender)[[4]]` (`r round(100*table(d$Gender)[[4]]/sum(table(d$Gender)))`%) other.
+
+In the **Control** condition there were `r table(d$Gender,d$Condition)[[5]]` (`r round(100*table(d$Gender,d$Condition)[[5]]/sum(table(d$Gender[d$Condition=="Control"])))`%)
+males, `r table(d$Gender,d$Condition)[[6]]` (`r round(100*table(d$Gender,d$Condition)[[6]]/sum(table(d$Gender[d$Condition=="Control"])))`%) females, `r table(d$Gender,d$Condition)[[7]]` 
+(`r round(100*table(d$Gender,d$Condition)[[7]]/sum(table(d$Gender[d$Condition=="Control"])))`%) non-binary people, and `r table(d$Gender,d$Condition)[[8]]` 
+(`r round(100*table(d$Gender,d$Condition)[[8]]/sum(table(d$Gender[d$Condition=="Control"])))`%) other.
+
+In the **Right** condition there were `r table(d$Gender,d$Condition)[[9]]` (`r round(100*table(d$Gender,d$Condition)[[9]]/sum(table(d$Gender[d$Condition=="Right"])))`%)
+males, `r table(d$Gender,d$Condition)[[10]]` (`r round(100*table(d$Gender,d$Condition)[[10]]/sum(table(d$Gender[d$Condition=="Right"])))`%) females, `r table(d$Gender,d$Condition)[[11]]` 
+(`r round(100*table(d$Gender,d$Condition)[[11]]/sum(table(d$Gender[d$Condition=="Right"])))`%) non-binary people, and `r table(d$Gender,d$Condition)[[12]]` 
+(`r round(100*table(d$Gender,d$Condition)[[12]]/sum(table(d$Gender[d$Condition=="Right"])))`%) other.
+
+In the **Left** condition there were `r table(d$Gender,d$Condition)[[1]]` (`r round(100*table(d$Gender,d$Condition)[[1]]/sum(table(d$Gender[d$Condition=="Left"])))`%)
+males, `r table(d$Gender,d$Condition)[[2]]` (`r round(100*table(d$Gender,d$Condition)[[2]]/sum(table(d$Gender[d$Condition=="Left"])))`%) females, `r table(d$Gender,d$Condition)[[3]]` 
+(`r round(100*table(d$Gender,d$Condition)[[3]]/sum(table(d$Gender[d$Condition=="Left"])))`%) non-binary people, and `r table(d$Gender,d$Condition)[[4]]` 
+(`r round(100*table(d$Gender,d$Condition)[[4]]/sum(table(d$Gender[d$Condition=="Left"])))`%) other.
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, fig.height=4}
+myTable <- d %>%
+  group_by(Condition,Gender) %>%
+  summarise(Number = n()) %>%
+  ungroup() %>%
+  filter(!is.na(Gender))
+
+p <- myTable %>%
+  ggplot(mapping=aes(y=Condition,x=Number,fill=Gender)) +
+  geom_col(position=position_stack(reverse = TRUE),colour="black") +
+  theme_bw() +
+  theme(axis.text.y = element_text(angle = 90, size=10),
+        axis.ticks.y = element_blank(), axis.ticks.x = element_blank(),
+        axis.title.y = element_blank(), axis.title.x=element_blank()) +
+  scale_fill_manual(values=c("#66CCFF","#FF99FF","#FFFF33","#BBBBBB")) +
+  labs(title = "Gender breakdown by condition") 
+
+p
+
+gender_breakdown_file <- here(figures_files_mastodon_dir, "gender_breakdown.png")
+ggsave(filename = gender_breakdown_file,
+       plot=p,device="png",
+       width=12,height=8, units="cm")
+```
+
+
+### Duration spent on surveys total
+
+Let's look at the distribution over durations in different conditions (mainly just to see how long it's taking people). This is after removing people with over 200 minutes which is probably ones who opened it, wandered away, and finished later.
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, fig.height=4}
+
+p <- d %>%
+  filter(Duration <= 200) %>%
+  ggplot(mapping=aes(x = Condition, y=Duration,fill=Condition)) +
+  stat_halfeye(aes(fill=Condition),adjust = .5, 
+               width = .5, .width = c(0.5, 1),
+               show.legend=FALSE, alpha=0.5, justification=-0.35,
+               point_interval = "mean_qi") +
+  geom_jitter(aes(fill=Condition,colour=Condition),alpha = .5, 
+              width=0.05, show.legend=FALSE) +
+  coord_flip() +  
+  scale_fill_manual(values=conditionColours) +
+  scale_colour_manual(values=conditionColours) +
+  geom_boxplot(width = .1, outlier.shape = NA,fill=NA,
+               colour="black",show.legend=FALSE) +
+  theme_bw() +
+  #facet_wrap(~Condition,ncol=2) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  scale_y_continuous(breaks=c(0,20,40),limits=c(0,60)) +
+  labs(title = "Duration differences by condition", 
+       subtitle = "Combines Before and After",
+       y="Average time in minutes") +
+  theme(axis.text.y = element_text(angle = 90, hjust=0.3, size=10),
+        axis.title.y = element_blank())
+
+p
+
+duration_by_condition_file <- here(figures_files_mastodon_dir, "duration_by_condition.png")
+ggsave(filename = duration_by_condition_file,
+       plot=p,device="png",
+       width=15,height=8, units="cm")
+
+```
+
+### Locations of people in all conditions
+
+Now we can look at where people come from. Let's use latitude and longitude for that as it is more exact (I rounded them to the closest whole number so as to keep people anonymous, so this gives their location within about a 60 mile square). 
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, fig.height=5}
+d$Condition <- factor(d$Condition, 
+                             levels=c("Left","Control","Right"))
+dtemp <- d %>% filter(TimePoint=="Before")
+world <- ne_countries(scale = "medium", returnclass = "sf")
+d_sf <- st_as_sf(dtemp, coords = c('LON', 'LAT'))
+
+p <- d_sf %>% 
+  st_set_crs(4326) %>%
+  ggplot() +
+    theme_bw() +
+    geom_sf(data=world,show.legend=FALSE,
+            colour="darkgrey",fill="white") +
+    geom_sf(aes(colour = PoliticalID),
+            alpha=0.7,show.legend=FALSE,size=1.5) +
+    coord_sf(xlim = c(-140,-50), ylim = c(10,60)) +
+    scale_fill_manual(values=politicalIDColours) +
+    scale_colour_manual(values=politicalIDColours) +
+    facet_wrap(~Condition,ncol=3) +
+    theme(strip.background = element_rect(colour = "black", fill = "white")) +
+    theme(axis.title.x = element_blank(),
+          axis.text.x = element_blank(), axis.ticks.x= element_blank())
+
+p
+
+location_by_condition_file <- here(figures_files_mastodon_dir, "location_by_condition.png")
+ggsave(filename = location_by_condition_file,
+       plot=p,device="png",
+       width=24,height=8, units="cm")
+
+d$Condition <- factor(d$Condition, 
+                             levels=c("Right","Control","Left"))
+```
+
+### Age 
+
+Let's look at the distribution over ages in different conditions. The mean age overall was `r round(mean(d$Age,na.rm=TRUE),1)` with a standard deviation of `r round(sd(d$Age,na.rm=TRUE),1)`. The maximum age was `r max(d$Age,na.rm=TRUE)` and the minimum was `r min(d$Age,na.rm=TRUE)`.
+
+The mean age in the **Control** condition was `r round(mean(d$Age[d$Condition=="Control"],na.rm=TRUE),1)` with a standard deviation of `r round(sd(d$Age[d$Condition=="Control"],na.rm=TRUE),1)`. The maximum age was `r max(d$Age[d$Condition=="Control"],na.rm=TRUE)` and the minimum was `r min(d$Age[d$Condition=="Control"],na.rm=TRUE)`.
+
+The mean age in the **Right** condition was `r round(mean(d$Age[d$Condition=="Right"],na.rm=TRUE),1)` with a standard deviation of `r round(sd(d$Age[d$Condition=="Right"],na.rm=TRUE),1)`. The maximum age was `r max(d$Age[d$Condition=="Right"],na.rm=TRUE)` and the minimum was `r min(d$Age[d$Condition=="Right"],na.rm=TRUE)`.
+
+The mean age in the **Left** condition was `r round(mean(d$Age[d$Condition=="Left"],na.rm=TRUE),1)` with a standard deviation of `r round(sd(d$Age[d$Condition=="Left"],na.rm=TRUE),1)`. The maximum age was `r max(d$Age[d$Condition=="Left"],na.rm=TRUE)` and the minimum was `r min(d$Age[d$Condition=="Left"],na.rm=TRUE)`.
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, fig.height=4}
+maxAge <- max(d$Age,na.rm=TRUE)
+
+p <- d %>%
+  ggplot(mapping=aes(x = Condition, y=Age,fill=Condition)) +
+  stat_halfeye(aes(fill=Condition),adjust = .5, width = .5, .width = c(0.5, 1),
+               show.legend=FALSE, alpha=0.5, justification=-0.35,
+               point_interval = "mean_qi") +
+  geom_jitter(aes(fill=Condition,colour=Condition),alpha = .5, 
+              width=0.1, height=0.05, show.legend=FALSE) +
+  coord_flip() +  
+  scale_fill_manual(values=conditionColours) +
+  scale_colour_manual(values=conditionColours) +
+  geom_boxplot(width = .1, outlier.shape = NA,fill=NA,
+               colour="black",show.legend=FALSE) +
+  theme_bw() +
+  #facet_wrap(~Condition,ncol=2) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  scale_y_continuous(limits=c(15,maxAge+5)) +
+  labs(title = "Age differences by condition", 
+       y="Reported age in years") +
+  theme(axis.text.y = element_text(angle = 90, hjust=0.3, size=10),
+        axis.ticks.y = element_blank(), axis.ticks.x = element_blank(),
+        axis.title.y = element_blank())
+
+p
+
+age_by_condition_file <- here(figures_files_mastodon_dir, "age_by_condition.png")
+ggsave(filename = age_by_condition_file,
+       plot=p,device="png",
+       width=15,height=8, units="cm")
+
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, fig.height=4}
+d$Condition <- factor(d$Condition, levels=c("Left","Control","Right"))
+
+dAgetable <- d %>%
+  filter(TimePoint=="Before") %>%
+  group_by(Condition) %>%
+  summarise(ageMean = mean(Age,na.rm=TRUE),
+            ageSd = sd(Age,na.rm=TRUE),
+            n = n(),
+            ageStderr = ageSd/sqrt(n)) %>%
+  ungroup()
+
+dtemp <- d %>%
+  filter(!is.na(Age)) %>%
+  filter(TimePoint=="Before")
+  
+p <- dAgetable %>%
+  ggplot(mapping=aes(x=Condition,y=ageMean,
+                     fill=Condition)) +
+  geom_jitter(data=dtemp,
+              mapping=aes(y=Age,x=Condition,
+                          colour=Condition),
+              alpha=0.6,show.legend=FALSE,width=0.4,
+              height=0.05) +
+  geom_col(colour="black",position="dodge",
+           show.legend=FALSE,alpha=0.35) +
+  geom_errorbar(mapping=aes(ymin = ageMean-ageStderr,
+                            ymax=ageMean+ageStderr),width=0.2) +
+  scale_fill_manual(values=conditionColours) +
+  scale_colour_manual(values=conditionColours) +
+  theme_bw() +
+  #ylim(0,6) +
+  #scale_y_continuous(breaks=c(1,3,5.5),labels=c("left","mid","right")) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Age by condition", 
+       y = "Age",
+       subtitle = "Each dot is one person") +
+  theme(axis.text.y= element_text(size=8,angle=90), 
+        axis.text.x= element_text(size=9), 
+        axis.ticks.x = element_blank(),
+        axis.ticks.y = element_blank())
+p
+
+age_by_condition_bars_file <- here(figures_files_mastodon_dir, "age_by_condition_bars.png")
+ggsave(filename = age_by_condition_bars_file,
+       plot=p,device="png",
+       width=10,height=8, units="cm")
+
+```
+
+
+### Education
+
+Breakdown of education of participants, using the four broad categories.
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, fig.height=4}
+myTable <- d %>%
+  group_by(Condition,Education) %>%
+  summarise(Number = n()) %>%
+  ungroup() %>%
+  filter(!is.na(Education))
+
+p <- myTable %>%
+  ggplot(mapping=aes(y=Condition,x=Number,fill=Education)) +
+  geom_col(position=position_stack(reverse = TRUE),colour="black") +
+  theme_bw() +
+  theme(axis.text.y = element_text(angle = 90, size=10),
+        axis.ticks.y = element_blank(), axis.ticks.x = element_blank(),
+        axis.title.y = element_blank(), axis.title.x=element_blank()) +
+  scale_fill_brewer(palette="Blues",direction=-1) +
+  labs(title = "Education breakdown by condition") 
+
+p
+
+education_breakdown_file <- here(figures_files_mastodon_dir, "education_breakdown.png")
+ggsave(filename = education_breakdown_file,
+       plot=p,device="png",
+       width=12,height=8, units="cm")
+```
+
+### Religion
+
+Breakdown of religious background of participants.
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, fig.height=4}
+myTable <- d %>%
+  group_by(Condition,Religion) %>%
+  summarise(Number = n()) %>%
+  ungroup() %>%
+  filter(!is.na(Religion))
+
+p <- myTable %>%
+  ggplot(mapping=aes(y=Condition,x=Number,fill=Religion)) +
+  geom_col(position=position_stack(reverse = TRUE),colour="black") +
+  theme_bw() +
+  theme(axis.text.y = element_text(angle = 90, size=10),
+        axis.ticks.y = element_blank(), axis.ticks.x = element_blank(),
+        axis.title.y = element_blank(), axis.title.x=element_blank()) +
+  scale_fill_brewer(palette="Purples",direction=-1) +
+  labs(title = "Religious background by condition") 
+
+p
+
+religion_breakdown_file <- here(figures_files_mastodon_dir, "religion_breakdown.png")
+ggsave(filename = religion_breakdown_file,
+       plot=p,device="png",
+       width=12,height=8, units="cm")
+```
+
+### Race/ethnicity
+
+Breakdown of racial/ethnic background of participants.
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, fig.height=4}
+myTable <- d %>%
+  group_by(Condition,Race) %>%
+  summarise(Number = n()) %>%
+  ungroup() %>%
+  filter(!is.na(Race))
+
+p <- myTable %>%
+  ggplot(mapping=aes(y=Condition,x=Number,fill=Race)) +
+  geom_col(position=position_stack(reverse = TRUE),colour="black") +
+  theme_bw() +
+  theme(axis.text.y = element_text(angle = 90, size=10),
+        axis.ticks.y = element_blank(), axis.ticks.x = element_blank(),
+        axis.title.y = element_blank(), axis.title.x=element_blank()) +
+  scale_fill_brewer(palette="Greens",direction=-1) +
+  labs(title = "Racial/ethnic background by condition") 
+
+p
+
+race_breakdown_file <- here(figures_files_mastodon_dir, "race_breakdown.png")
+ggsave(filename = race_breakdown_file,
+       plot=p,device="png",
+       width=12,height=8, units="cm")
+```
+
+### Orientation
+
+Breakdown of sexual orientation of participants.
+
+Overall there were `r table(d$Orientation)[[1]]` (`r round(100*table(d$Orientation)[[1]]/sum(table(d$Orientation)))`%) straight people, `r table(d$Orientation)[[2]]` (`r round(100*table(d$Orientation)[[2]]/sum(table(d$Orientation)))`%) gay, and `r table(d$Orientation)[[3]]` (`r round(100*table(d$Orientation)[[3]]/sum(table(d$Orientation)))`%) queer. 
+
+In the **Control** condition there were `r table(d$Orientation,d$Condition)[[4]]` (`r round(100*table(d$Orientation,d$Condition)[[4]]/sum(table(d$Orientation[d$Condition=="Control"])))`%)
+straight, `r table(d$Orientation,d$Condition)[[5]]` (`r round(100*table(d$Orientation,d$Condition)[[5]]/sum(table(d$Orientation[d$Condition=="Control"])))`%) gay, and `r table(d$Orientation,d$Condition)[[6]]` 
+(`r round(100*table(d$Orientation,d$Condition)[[6]]/sum(table(d$Orientation[d$Condition=="Control"])))`%) queer. 
+
+In the **Left** condition there were `r table(d$Orientation,d$Condition)[[1]]` (`r round(100*table(d$Orientation,d$Condition)[[1]]/sum(table(d$Orientation[d$Condition=="Left"])))`%)
+straight, `r table(d$Orientation,d$Condition)[[2]]` (`r round(100*table(d$Orientation,d$Condition)[[2]]/sum(table(d$Orientation[d$Condition=="Left"])))`%) gay, and `r table(d$Orientation,d$Condition)[[3]]` 
+(`r round(100*table(d$Orientation,d$Condition)[[3]]/sum(table(d$Orientation[d$Condition=="Left"])))`%) queer.
+
+In the **Right** condition there were `r table(d$Orientation,d$Condition)[[7]]` (`r round(100*table(d$Orientation,d$Condition)[[7]]/sum(table(d$Orientation[d$Condition=="Right"])))`%)
+straight, `r table(d$Orientation,d$Condition)[[8]]` (`r round(100*table(d$Orientation,d$Condition)[[8]]/sum(table(d$Orientation[d$Condition=="Right"])))`%) gay, and `r table(d$Orientation,d$Condition)[[9]]` 
+(`r round(100*table(d$Orientation,d$Condition)[[9]]/sum(table(d$Orientation[d$Condition=="Right"])))`%) queer. 
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, fig.height=4}
+myTable <- d %>%
+  group_by(Condition,Orientation) %>%
+  summarise(Number = n()) %>%
+  ungroup() %>%
+  filter(!is.na(Orientation))
+
+p <- myTable %>%
+  ggplot(mapping=aes(y=Condition,x=Number,fill=Orientation)) +
+  geom_col(position=position_stack(reverse = TRUE),colour="black") +
+  theme_bw() +
+  theme(axis.text.y = element_text(angle = 90, size=10),
+        axis.ticks.y = element_blank(), axis.ticks.x = element_blank(),
+        axis.title.y = element_blank(), axis.title.x=element_blank()) +
+  scale_fill_brewer(palette="Reds",direction=-1) +
+  labs(title = "Orientation background by condition") 
+
+p
+
+orientation_breakdown_file <- here(figures_files_mastodon_dir, "orientation_breakdown.png")
+ggsave(filename = orientation_breakdown_file,
+       plot=p,device="png",
+       width=12,height=8, units="cm")
+```
+
+### Trans
+
+Someone was considered trans if their gender didn't match their sex, including nonbinary/genderqueer).
+
+Overall there were `r table(d$Trans)[[1]]` (`r round(100*table(d$Trans)[[1]]/sum(table(d$Trans)))`%) trans people and `r table(d$Trans)[[2]]` (`r round(100*table(d$Trans)[[2]]/sum(table(d$Trans)))`%) cis people.
+
+In the **Control** condition there were `r table(d$Trans,d$Condition)[[3]]` (`r round(100*table(d$Trans,d$Condition)[[3]]/sum(table(d$Trans[d$Condition=="Control"])))`%) trans and `r table(d$Trans,d$Condition)[[4]]` (`r round(100*table(d$Trans,d$Condition)[[4]]/sum(table(d$Trans[d$Condition=="Control"])))`%) cis people.
+
+In the **Left** condition there were `r table(d$Trans,d$Condition)[[1]]` (`r round(100*table(d$Trans,d$Condition)[[1]]/sum(table(d$Trans[d$Condition=="Left"])))`%) trans and `r table(d$Trans,d$Condition)[[2]]` (`r round(100*table(d$Trans,d$Condition)[[2]]/sum(table(d$Trans[d$Condition=="Left"])))`%) cis people.
+
+In the **Right** condition there were `r table(d$Trans,d$Condition)[[5]]` (`r round(100*table(d$Trans,d$Condition)[[5]]/sum(table(d$Trans[d$Condition=="Right"])))`%) trans and `r table(d$Trans,d$Condition)[[6]]` (`r round(100*table(d$Trans,d$Condition)[[6]]/sum(table(d$Trans[d$Condition=="Right"])))`%) cis people.
+
+
+### LGBTQ
+
+This is calculated by taking the answers to trans and orientation together. Someone was considered LGBTQ if they were trans (as defined above) or their orientation was anything other than straight.
+
+Overall there were `r table(d$LGBT)[[1]]` (`r round(100*table(d$LGBT)[[1]]/sum(table(d$LGBT)))`%) LGBTQ people and `r table(d$LGBT)[[2]]` (`r round(100*table(d$LGBT)[[2]]/sum(table(d$LGBT)))`%) non-LGBTQ people.
+
+In the **Control** condition there were `r table(d$LGBT,d$Condition)[[3]]` (`r round(100*table(d$LGBT,d$Condition)[[3]]/sum(table(d$LGBT[d$Condition=="Control"])))`%) LGBTQ and `r table(d$LGBT,d$Condition)[[4]]` (`r round(100*table(d$LGBT,d$Condition)[[4]]/sum(table(d$LGBT[d$Condition=="Control"])))`%) non-LGBTQ people.
+
+In the **Left** condition there were `r table(d$LGBT,d$Condition)[[1]]` (`r round(100*table(d$LGBT,d$Condition)[[1]]/sum(table(d$LGBT[d$Condition=="Left"])))`%) LGBTQ and `r table(d$LGBT,d$Condition)[[2]]` (`r round(100*table(d$LGBT,d$Condition)[[2]]/sum(table(d$LGBT[d$Condition=="Left"])))`%) non-LGBTQ people.
+
+In the **Right** condition there were `r table(d$LGBT,d$Condition)[[5]]` (`r round(100*table(d$LGBT,d$Condition)[[5]]/sum(table(d$LGBT[d$Condition=="Right"])))`%) LGBTQ and `r table(d$LGBT,d$Condition)[[6]]` (`r round(100*table(d$LGBT,d$Condition)[[6]]/sum(table(d$LGBT[d$Condition=="Right"])))`%) non-LGBTQ people.
+
+### Political identification
+
+First, we can break down purely in terms of numbers in each category.
+
+Overall there were `r table(d$PoliticalID)[[1]]` (`r round(100*table(d$PoliticalID)[[1]]/sum(table(d$PoliticalID)))`%) Democrats,
+`r table(d$PoliticalID)[[2]]` (`r round(100*table(d$PoliticalID)[[2]]/sum(table(d$PoliticalID)))`%) Independents, and
+`r table(d$PoliticalID)[[3]]` (`r round(100*table(d$PoliticalID)[[3]]/sum(table(d$PoliticalID)))`%) Republicans.
+
+In the **Control** condition there were `r table(d$PoliticalID,d$Condition)[[4]]` (`r round(100*table(d$PoliticalID,d$Condition)[[4]]/sum(table(d$PoliticalID[d$Condition=="Control"])))`%) Democrats, `r table(d$PoliticalID,d$Condition)[[5]]` (`r round(100*table(d$PoliticalID,d$Condition)[[5]]/sum(table(d$PoliticalID[d$Condition=="Control"])))`%) Independents, and `r table(d$PoliticalID,d$Condition)[[6]]` (`r round(100*table(d$PoliticalID,d$Condition)[[6]]/sum(table(d$PoliticalID[d$Condition=="Control"])))`%) Republicans.
+
+In the **Left** condition there were `r table(d$PoliticalID,d$Condition)[[1]]` (`r round(100*table(d$PoliticalID,d$Condition)[[1]]/sum(table(d$PoliticalID[d$Condition=="Left"])))`%) Democrats, `r table(d$PoliticalID,d$Condition)[[2]]` (`r round(100*table(d$PoliticalID,d$Condition)[[2]]/sum(table(d$PoliticalID[d$Condition=="Left"])))`%) Independents, and `r table(d$PoliticalID,d$Condition)[[3]]` (`r round(100*table(d$PoliticalID,d$Condition)[[3]]/sum(table(d$PoliticalID[d$Condition=="Left"])))`%) Republicans.
+
+In the **Right** condition there were `r table(d$PoliticalID,d$Condition)[[7]]` (`r round(100*table(d$PoliticalID,d$Condition)[[7]]/sum(table(d$PoliticalID[d$Condition=="Right"])))`%) Democrats, `r table(d$PoliticalID,d$Condition)[[8]]` (`r round(100*table(d$PoliticalID,d$Condition)[[8]]/sum(table(d$PoliticalID[d$Condition=="Right"])))`%) Independents, and `r table(d$PoliticalID,d$Condition)[[9]]` (`r round(100*table(d$PoliticalID,d$Condition)[[9]]/sum(table(d$PoliticalID[d$Condition=="Right"])))`%) Republicans.
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, fig.height=4}
+myTable <- d %>%
+  group_by(Condition,PoliticalID) %>%
+  summarise(Number = n()) %>%
+  ungroup() %>%
+  filter(!is.na(PoliticalID))
+
+p <- myTable %>%
+  ggplot(mapping=aes(y=Condition,x=Number,fill=PoliticalID)) +
+  geom_col(position=position_stack(reverse = TRUE),colour="black") +
+  theme_bw() +
+  theme(axis.text.y = element_text(angle = 90, size=10),
+        axis.ticks.y = element_blank(), axis.ticks.x = element_blank(),
+        axis.title.y = element_blank(), axis.title.x=element_blank()) +
+  scale_fill_manual(values=politicalIDColours) +
+  labs(title = "Political identification by condition") 
+
+p
+
+politicalID_breakdown_file <- here(figures_files_mastodon_dir, "politicalID_breakdown.png")
+ggsave(filename = politicalID_breakdown_file,
+       plot=p,device="png",
+       width=12,height=8, units="cm")
+```
+
+We can also look at it using our more continuous measure, where 0=strongly democrat, 3=independent, and 6 = strongly republican. 
+
+The mean overall was `r round(mean(d$PoliticalIDNum,na.rm=TRUE),1)` with a standard deviation of `r round(sd(d$PoliticalIDNum,na.rm=TRUE),1)`. 
+
+The mean in the **Control** condition was `r round(mean(d$PoliticalIDNum[d$Condition=="Control"],na.rm=TRUE),1)` with a standard deviation of `r round(sd(d$PoliticalIDNum[d$Condition=="Control"],na.rm=TRUE),1)`. 
+
+The mean in the **Left** condition was `r round(mean(d$PoliticalIDNum[d$Condition=="Left"],na.rm=TRUE),1)` with a standard deviation of `r round(sd(d$PoliticalIDNum[d$Condition=="Left"],na.rm=TRUE),1)`.
+
+The mean in the **Right** condition was `r round(mean(d$PoliticalIDNum[d$Condition=="Right"],na.rm=TRUE),1)` with a standard deviation of `r round(sd(d$PoliticalIDNum[d$Condition=="Right"],na.rm=TRUE),1)`.
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, fig.height=4}
+d$Condition <- factor(d$Condition, levels=c("Left","Control","Right"))
+p <- d %>%
+  #filter(!is.na(PoliticalIDNum)) %>%
+  ggplot(mapping=aes(x=PoliticalIDNum,fill=PoliticalID)) +
+  geom_histogram(show.legend=FALSE) +
+  facet_wrap(~Condition,ncol=3) +
+  scale_fill_manual(values=politicalIDColours) +
+  scale_colour_manual(values=politicalIDColours) +
+  theme_bw() +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  scale_x_continuous(breaks=c(0.5,1.5,2.5,3.5,4.5,5.5),limits=c(-0.5,6.5)) + 
+  labs(title = "Political ID by condition", x = "Political alignment (left=Democrat, right=Republican)", y = "Count",
+       subtitle = "Further left = Democrat; further right = Republican") +
+  theme(axis.text.y= element_blank(), axis.ticks.x = element_blank(),
+        axis.ticks.y = element_blank(), axis.text.x = element_blank())
+p
+
+politics_spectrum_by_condition_file <- here(figures_files_mastodon_dir, "politics_spectrum_by_condition.png")
+ggsave(filename = politics_spectrum_by_condition_file,
+       plot=p,device="png",
+       width=15,height=8, units="cm")
+d$Condition <- factor(d$Condition, levels=c("Right","Control","Left"))
+
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, fig.height=4}
+d$Condition <- factor(d$Condition, levels=c("Left","Control","Right"))
+
+dpIDtable <- d %>%
+  filter(TimePoint=="Before") %>%
+  group_by(Condition) %>%
+  summarise(idMean = mean(PoliticalIDNum,na.rm=TRUE),
+            idSd = sd(PoliticalIDNum,na.rm=TRUE),
+            n = n(),
+            idStderr = idSd/sqrt(n)) %>%
+  ungroup()
+
+dtemp <- d %>%
+  filter(!is.na(PoliticalIDNum)) %>%
+  filter(TimePoint=="Before")
+  
+p <- dpIDtable %>%
+  ggplot(mapping=aes(x=Condition,y=idMean,fill=Condition)) +
+  geom_jitter(data=dtemp,
+              mapping=aes(y=PoliticalIDNum,x=Condition,colour=Condition),
+              alpha=0.6,show.legend=FALSE,width=0.4,height=0.05) +
+  geom_col(colour="black",position="dodge",
+           show.legend=FALSE,alpha=0.35) +
+  geom_errorbar(mapping=aes(ymin = idMean-idStderr,
+                            ymax=idMean+idStderr),width=0.2) +
+  scale_fill_manual(values=conditionColours) +
+  scale_colour_manual(values=conditionColours) +
+  theme_bw() +
+  ylim(0,6) +
+  scale_y_continuous(breaks=c(1,3,5.5),labels=c("left","mid","right")) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Political ID by condition", 
+       y = "Self-rated ID",
+       subtitle = "Each dot is one person") +
+  theme(axis.text.y= element_text(size=8,angle=90), 
+        axis.text.x= element_text(size=9), 
+        axis.ticks.x = element_blank(),
+        axis.ticks.y = element_blank())
+p
+
+politics_spectrum_by_condition_bars_file <- here(figures_files_mastodon_dir, "politics_spectrum_by_condition_bars.png")
+ggsave(filename = politics_spectrum_by_condition_bars_file,
+       plot=p,device="png",
+       width=10,height=8, units="cm")
+
+```

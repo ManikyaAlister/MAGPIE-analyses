@@ -1,0 +1,1167 @@
+---
+title: "Cleaning the Magpie Conversation data"
+output:
+  html_document:
+    df_print: paged
+---
+
+We start by clearing the current environment and loading some useful libraries. Note that all of the output files can be found in the `files/conditionname/engagement` folder.
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+rm(list=ls())
+library(tidyverse)
+library(here)
+library(lubridate)
+library(stringi)
+library(assertthat)
+
+options(scipen=999,digits=20)
+
+conditionName <- "Left"
+DRY_RUN <- FALSE
+
+if (conditionName=="Control") {
+  folder <- "control/"
+  cMonth <- 8
+  cDay <- 5
+  cDayEnd <- 10
+  start_time <- "2024-08-06 21:00:00.000000"
+  end_time   <- "2024-08-09 21:00:00.000000"
+} else if (conditionName=="Right") {
+  folder <- "right/"
+  cMonth <- 8
+  cDay <- 19
+  cDayEnd <- 24
+  start_time <- "2024-08-20 21:00:00.000000"
+  end_time   <- "2024-08-23 21:00:00.000000"
+} else {
+  folder <- "left/"
+  cMonth <- 9
+  cDay <- 2
+  cDayEnd <- 8
+  start_time <- "2024-09-03 20:30:00.000000"
+  end_time   <- "2024-09-06 20:30:00.000000"
+}
+```
+
+```{r}
+raw_magpie_dir <- "data/magpie/original"
+processed_magpie_dir <- "data/magpie/processed"
+raw_files_mastodon_dir <- "data/mastodon/files/raw"
+processed_files_mastodon_dir <- "data/mastodon/files/processed"
+```
+
+Declare some utility function for use below. 
+TODO: Refactor utility functions in to .R files.
+
+```{r}
+
+save_processed_file = function(data, file, dry_run = DRY_RUN) {
+  if (! dry_run) {
+    # create the directory if it does not exist
+    dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+    cat("saving to: ", file)
+    write_csv(data, file=file)
+  } else {
+    cat("(dry_run) skipping saving to: ", file)
+  }
+}
+```
+
+Next, let's just check that "here()" returns what we think it should. If things are configured correctly, here should relate to the top-level directory for the project - as per the github repository.
+
+```{r}
+# Assert that the here() function returns what we expect.
+# We do this by checking that it contains the "R" and "data" directories.
+
+assert_that(
+    dir.exists(file.path(here(), "R")),
+    msg = "The 'here()' function does not point to the expected directory."
+)
+```
+
+The readr package (e.g. v2.1.5 under R 4.5) has a "bug" such that when read_csv is used
+to read columns containing numeric values > 32 bit (e.g. integer values used as database keys,
+for example), the value may be silently corrupted. The root cause seems to be that R (e.g. 4.5)
+silently misrepresents the long numbers when converting to "numeric" type.
+
+For example, the follwing code yields FALSE where it should return TRUE
+
+<pre>
+id <- "112911754871964075"
+as.character(as.numeric(id)) == id
+</pre>
+
+The following check determines whether the current version of readr/R has the bug or not,
+in case a version is released that guards against the underyling issue.
+
+```{r}
+#sessionInfo()
+
+# show current package versions
+readr_version <- packageVersion("readr")
+
+# The following simulates a single column CSV file where the
+# each row contains a different number.
+
+data <- "MySQLID\n112917130127682334\n112917130127682336"
+
+# read_csv does not have a "text" argument
+ids <- read_csv(file = I(data), show_col_types = FALSE)
+
+# The two numbers are different, so the following assertion should hold.
+# However, due to the aforementioned bug, this assertion is likely to fail.
+
+readr_preserves <- ids[1, 1] != ids[2, 1]
+
+cat(paste0("readr::read_csv ",
+           readr_version,
+           ifelse(readr_preserves, " does", " does not"),
+           " preserve long numeric identifiers\n")
+)
+
+ids_correct <- read_csv(col_types = cols(MySQLID = "c"), file = I(data))
+
+ignoreSuccess <- assert_that(ids_correct[1, 1] != ids_correct[2, 1],
+                             msg = "readr::read_csv workaround failed")
+
+cat("But using explicit col_types works as expected")
+
+```
+
+### Statuses data
+
+All the info about posts, replies, and reposts (which Mastodon internally calls a "status"). Outputted to: `statuses.csv` and with the following columns
+
+**Subject**: The random nine-letter code which is a unique identifier for each person. Maps onto the same code for the Before and After survey data. This is the person who made the post/reply/reblog.
+
+**UserName**: Their username on Magpie, like FragrantWombat or whatever
+
+**Troll**: This is 1 if they were a troll account, 0 otherwise
+
+**Condition**: Control (where we let them talk without us doing anything) or Right (where we had right-wing "bot" accounts) or Left (left-wing bots)
+
+**Time**: Time stamp that this post occurred
+
+**Year**: Year that this post occurred
+
+**Month**: Month that this post occurred
+
+**Day**: Day that this post occurred
+
+**Hour**: Hour that this post occurred
+
+**Minute**: Minute that this post occurred
+
+**Second**: Second that this post occurred
+
+**ExpDay**: Day1, Day2, Day3, etc, indicating the day of the experiment
+
+**StatusID**: Each post/"status" has a unique ID, this is it
+
+**StatusReplyID**: If this post was replying to another one in a thread, this is the ID of the one it replied to (I think the most proximate one?)
+
+**StatusReblogID**: If this post was a reblog i.e., retweet, then this is the StatusID of the one being reblogged. Mastodon doesn't allow quote-reblogs so a reblog is always just a repetition of the original. It is NA if it's not a reblog.
+
+**Reply**: This is TRUE if this post is a reply, FALSE otherwise
+
+**Visibility**: On Mastodon you can set some posts to be seen only by followers, vs public, vs only to the person you're replying to, etc. 0 indicates public, i.e., anybody on the server can see it. I *think* that 1 means it's public but isn't automatically put into the timeline, 2 means only followers can see it, and 3 means only the person tagged can see it (so that is effectively a DM). The vast majority of these are 0 so this is probably not that interesting.
+
+**AccountReply**: If they replied to somebody, the UserName corresponding to the person they replied to. (If there were multiple people in the thread I think is the most proximate one?). If this is not a reply, then it is NA
+
+**AccountReblog**: If they reblogged somebody, the UserName corresponding to the person they reblogged. If this is not a reblog, then it is NA
+
+**ConvID**: I think each thread/conversation has a unique one of these.
+
+**PollID**: If their post was a poll, this is the ID for that. I think this rarely happened.
+
+**AttachID**: If they uploaded an attachement, this is the ID for that.
+
+**DeletedTime**: If they deleted the post, when they did. NA if they did not delete it.
+
+**EditedTime**: If they edited the post, when they did. NA if they did not edit it. (As far as I can tell it does not keep the original unedited post; the text corresponds to the edited version)
+
+**Text**: The actual text of the post. If it was a reblog this is the same text as the original post.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# first load the mastodon participant data
+mastodon_participant_colSpec <- cols_only(account_id = "c", UserName = "c")
+
+mastodon_participant_file <- here(raw_magpie_dir,
+                                  tolower(conditionName),
+                                  "mastodon_participant_ids.csv")
+
+mastodon_account_ids <-
+  read_csv(file = mastodon_participant_file,
+           col_types = mastodon_participant_colSpec) %>%
+  rename(MagpieID = account_id)
+
+mastodon_account_ids %>% glimpse()
+
+```
+
+Load the mastodon participant data.
+
+```{r}
+
+prolific_participant_colSpec <- cols(.default = "c")
+
+prolific_participant_file <- here(raw_magpie_dir,
+                                  tolower(conditionName),
+                                  "prolific_participant_ids.csv")
+
+prolific_account_ids <-
+  read_csv(file = prolific_participant_file,
+           col_types = prolific_participant_colSpec)
+
+prolific_account_ids %>% glimpse()
+```
+
+Create a file containing the full set of identifiers (mastodon, prolific, qualtrics etc.)
+
+```{r}
+d_names <-
+  prolific_account_ids %>%
+  mutate(Troll = as.numeric(startsWith(ProlificID, "fake")))
+
+d_names %>% glimpse()
+```
+
+```{r}
+d_init <- mastodon_account_ids %>%
+  left_join(d_names,by="UserName") %>%
+  mutate(Subject = ifelse(UserName=="Admin", "Admin", Subject))
+
+d_init %>% glimpse()
+
+global_participant_colSpec <- cols(Troll = "n", .defult = "c")
+
+global_participant_file <- here(processed_magpie_dir,
+                                tolower(conditionName),
+                                "global_participant_ids.csv")
+
+d_init %>% save_processed_file(file = global_participant_file)
+```
+
+# M24-RPRE. Continue migrating/refactoring/fixing original R-based
+data pre-processing code from here. See example code above for how to
+deal with the > 32 bit numeric identifier problem. zzz
+
+```{r}
+
+replacementVec <- d_init %>% select(MagpieID,UserName) %>%
+  filter(!is.na(MagpieID)) %>% arrange(MagpieID)
+rv <- replacementVec$UserName
+names(rv) <- replacementVec$MagpieID
+
+raw_statuses_colSpec <- cols(.default = "c")
+raw_statuses_file <- here(raw_files_mastodon_dir,
+                          tolower(conditionName),
+                          "statuses.csv")
+
+# read the statuses data
+d_stat <- read_csv(file = raw_statuses_file, col_types = raw_statuses_colSpec) %>%
+  filter(created_at >= start_time & created_at <= end_time) %>% 
+  rename(StatusID=id,Time=created_at,MagpieID=account_id,
+         StatusReplyID=in_reply_to_id,
+         StatusReblogID=reblog_of_id,Reply=reply,Visibility=visibility,
+         ConvID=conversation_id,AccountReply=in_reply_to_account_id,
+         PollID=poll_id,DeletedTime=deleted_at,EditedTime=edited_at,
+         AttachID=ordered_media_attachment_ids,Text=text) %>%
+  mutate(Year = year(Time),
+         Month = month(Time),
+         Day = day(Time),
+         Hour = hour(Time),
+         Minute = minute(Time),
+         Second = round(second(Time))) %>%
+  arrange(Time) %>%
+  mutate(Keep = case_when(Year==2023 ~ 0,
+                          Month<cMonth ~ 0,
+                          Day<(cDay+1) ~ 0,
+                          Day>(cDayEnd) ~ 0, TRUE~1)) %>%
+  filter(Keep==1) %>%
+  mutate(ExpDay = case_when(Day==cDay+1 ~ "Day1",
+                            Day==cDay+2 ~ "Day2",
+                            Day==cDay+3 ~ "Day3",
+                            Day==cDay+4 ~ "Day4", TRUE~"Day5"))
+
+d_stat$MagpieID <- as.character(d_stat$MagpieID)
+d_stat <- d_stat %>%
+  left_join(d_init,by=join_by(MagpieID)) %>%
+  mutate(Condition=conditionName) %>%
+  select(Subject,UserName,Condition,Time,Year,Month,Day,
+         Hour,Minute,Second,ExpDay,StatusID,StatusReplyID,
+         StatusReblogID,Reply,Visibility,AccountReply,ConvID,PollID,
+         AttachID,PollID,DeletedTime,
+         EditedTime,Text) %>%
+  mutate(Text = str_replace_all(Text,rv)) %>%
+  mutate(AccountReply = str_replace_all(AccountReply,rv))
+
+d_stat$StatusID <- as.character(d_stat$StatusID)
+d_stat$StatusReplyID <- as.character(d_stat$StatusReplyID)
+d_stat$StatusReblogID <- as.character(d_stat$StatusReblogID)
+d_stat$AccountReply <- as.character(d_stat$AccountReply)
+
+d_statowner <- d_stat %>% select(StatusID,UserName) %>% arrange(StatusID)
+userRV <- d_statowner$UserName
+names(userRV) <- d_statowner$StatusID
+
+d_names_short <- d_names %>% select(UserName,Troll)
+
+d_stat <- d_stat %>%
+  mutate(AccountReblog = str_replace_all(StatusReblogID,userRV)) %>%
+  left_join(d_names_short,by="UserName")
+
+for (i in seq_len(nrow(d_stat))) {
+  if (!is.na(d_stat$StatusReblogID[i])) {
+    j <- which(d_stat$StatusID==d_stat$StatusReblogID[i])
+    if (length(j)>0) {
+      d_stat$Text[i] <- d_stat$Text[j]
+    }
+  }
+}
+
+d_stat <- d_stat %>%
+  select(Subject,UserName,Troll,Condition,Time,StatusID,StatusReplyID,
+         StatusReblogID,Reply,Visibility,AccountReply,AccountReblog,
+         ConvID,PollID,AttachID,DeletedTime,EditedTime,Text,
+         Year,Month,Day,Hour,Minute,Second,ExpDay)
+
+processed_statuses_colSpec <- cols(.default = "c")
+processed_statuses_file <- here(processed_files_mastodon_dir,
+                                tolower(conditionName),
+                                "statuses.csv")
+
+d_stat %>% save_processed_file(file = processed_statuses_file)
+```
+
+
+### Following data
+
+All the info about who follows who and when. Outputted to: `follows.csv` and with the following columns. I don't know where unfollow information is listed; perhaps we didn't have any.
+
+**FolID**: I assume this is the system number for the specific follow, I am not sure if it's useful but whatevs
+
+**Condition**: Control (where we let them talk without us doing anything) or Right (where we had right-wing "bot" accounts) or Left (left-wing bots)
+
+**FollowerID**: The ID corresponding to the person who did the follow
+
+**FollowerTroll**: This is 1 if the follower is a troll account, 0 otherwise
+
+**FollowingID**: The ID corresponding to the person that they followed
+
+**FollowingTroll**: This is 1 if the person followed is a troll account, 0 otherwise
+
+**Time**: Time stamp that this follow occurred
+
+**Year**: Year that this follow occurred
+
+**Month**: Month that this follow occurred
+
+**Day**: Day that this follow occurred
+
+**Hour**: Hour that this follow occurred
+
+**Minute**: Minute that this follow occurred
+
+**Second**: Second that this follow occurred
+
+**ExpDay**: Day1, Day2, Day3, etc, indicating the day of the experiment
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+d_names_follower <- d_names_short %>%
+  rename(FollowerID = UserName,FollowerTroll = Troll)
+d_names_following <- d_names_short %>%
+  rename(FollowingID = UserName,FollowingTroll = Troll)
+
+raw_follows_colSpec <- cols(.default = "c")
+raw_follows_file <- here(raw_files_mastodon_dir,
+                         tolower(conditionName),
+                         "follows.csv")
+
+# read the follows data
+d_fol <- read_csv(file = raw_follows_file, col_types = raw_follows_colSpec) %>%
+  mutate(Condition=conditionName) %>%
+  filter(created_at >= start_time & created_at <= end_time) %>% 
+  rename(FolID=id,Time=created_at,FollowerID=account_id,
+         FollowingID=target_account_id) %>%
+  select(FolID,Condition,Time,FollowerID,FollowingID) %>%
+  mutate(FollowerID = str_replace_all(FollowerID,rv),
+         FollowingID = str_replace_all(FollowingID,rv)) %>%
+  mutate(FollowerID = case_when(FollowerID=="-99"~NA,TRUE~FollowerID)) %>%
+  mutate(Year = year(Time),
+         Month = month(Time),
+         Day = day(Time),
+         Hour = hour(Time),
+         Minute = minute(Time),
+         Second = round(second(Time))) %>%
+  arrange(Time) %>%
+  mutate(Keep = case_when(Year==2023 ~ 0,
+                          Month<cMonth ~ 0,
+                          Day<(cDay+1) ~ 0,
+                          Day>(cDayEnd) ~ 0, TRUE~1)) %>%
+  filter(Keep==1) %>%
+  mutate(ExpDay = case_when(Day==cDay+1 ~ "Day1",
+                            Day==cDay+2 ~ "Day2",
+                            Day==cDay+3 ~ "Day3",
+                            Day==cDay+4 ~ "Day4", TRUE~"Day5")) %>%
+  left_join(d_names_follower,by="FollowerID") %>%
+  left_join(d_names_following,by="FollowingID") %>%
+  select(FolID, Condition, FollowerID, FollowerTroll, FollowingID,
+         FollowingTroll, Time, Year, Month, Day, Hour, Minute, Second, ExpDay)
+
+processed_follows_colSpec <- cols(.default = "c")
+processed_follows_file <- here(processed_files_mastodon_dir,
+                               tolower(conditionName),
+                               "follows.csv")
+
+d_fol %>% save_processed_file(file = processed_follows_file)
+```
+
+
+### Favourites data
+
+All the info about who favourited who and when. Outputted to: `favourites.csv` and with the following columns
+
+**FavID**: The system number for the specific favourite
+
+**Condition**: Control (where we let them talk without us doing anything) or Right (where we had right-wing "bot" accounts) or Left (left-wing bots)
+
+**FavouriterID**: The ID corresponding to the person who did the favourite
+
+**FavouriterTroll**: This is 1 if the favouriter is a troll account, 0 otherwise
+
+**StatusID**: The ID corresponding to the post ("status") that they favourited. This corresponds to the StatusID variable in the `statuses.csv` file and elsewhere.
+
+**FavouritedID**: The ID corresponding to the person who wrote the status that was favourited (i.e., the person who received the favourite)
+
+**FavouritedTroll**: This is 1 if the person who got favourited is a troll account, 0 otherwise
+
+**Time**: Time stamp that this favourite occurred
+
+**Year**: Year that this favourite occurred
+
+**Month**: Month that this favourite occurred
+
+**Day**: Day that this favourite occurred
+
+**Hour**: Hour that this favourite occurred
+
+**Minute**: Minute that this favourite occurred
+
+**Second**: Second that this favourite occurred
+
+**ExpDay**: Day1, Day2, Day3, etc, indicating the day of the experiment
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+d_names_favouriter <- d_names_short %>%
+  rename(FavouriterID = UserName,FavouriterTroll = Troll)
+d_names_favourited <- d_names_short %>%
+  rename(FavouritedID = UserName,FavouritedTroll = Troll)
+
+raw_favourites_colSpec <- cols(.default = "c")
+raw_favourites_file <- here(raw_files_mastodon_dir,
+                            tolower(conditionName),
+                            "favourites.csv")
+
+# read the favourites data
+d_fav <- read_csv(file = raw_favourites_file, col_types = raw_favourites_colSpec) %>%
+  mutate(Condition=conditionName) %>%
+  filter(created_at >= start_time & created_at <= end_time) %>% 
+  rename(FavID=id,Time=created_at,FavouriterID=account_id,
+         StatusID=status_id) %>%
+  select(FavID,Condition,Time,FavouriterID,StatusID) %>%
+  mutate(Year = year(Time),
+         Month = month(Time),
+         Day = day(Time),
+         Hour = hour(Time),
+         Minute = minute(Time),
+         Second = round(second(Time))) %>%
+  mutate(Keep = case_when(Year==2023 ~ 0,
+                          Month<cMonth ~ 0,
+                          Day<(cDay+1) ~ 0,
+                          Day>(cDayEnd) ~ 0, TRUE~1)) %>%
+  filter(Keep==1) %>%
+  mutate(ExpDay = case_when(Day==cDay+1 ~ "Day1",
+                            Day==cDay+2 ~ "Day2",
+                            Day==cDay+3 ~ "Day3",
+                            Day==cDay+4 ~ "Day4", TRUE~"Day5")) %>%
+  arrange(Time) %>%
+  mutate(FavouriterID = str_replace_all(FavouriterID,rv)) %>%
+  mutate(FavouriterID = as.character(FavouriterID),
+         StatusID = as.character(StatusID))
+
+d_fav <- d_fav %>%
+  left_join(d_statowner,by="StatusID") %>%
+  rename(FavouritedID = UserName) %>%
+  left_join(d_names_favourited,by="FavouritedID") %>%
+  left_join(d_names_favouriter,by="FavouriterID") %>%
+  select(FavID, Condition, FavouriterID, FavouriterTroll, StatusID,
+         FavouritedID, FavouritedTroll,
+         Time, Year, Month, Day, Hour, Minute, Second, ExpDay)
+
+processed_favourites_colSpec <- cols(.default = "c")
+processed_favourites_file <- here(processed_files_mastodon_dir,
+                                  tolower(conditionName),
+                                  "favourites.csv")
+
+d_fav %>% save_processed_file(file = processed_favourites_file)
+```
+
+
+### Account summary data
+
+I don't know if this is useful, but it is a dataset with some summary information about each account. Outputted to: `account_summaries.csv` and with the following columns
+
+**Condition**: Control (where we let them talk without us doing anything) or Right (where we had right-wing "bot" accounts) or Left (left-wing bots)
+
+**UserName**: The Magpie username corresponding to the account these summary stats are for
+
+**Troll**: This is 1 if it's a troll account, 0 otherwise
+
+**LoginN**: The number of distinct logins to this account (probably not that interesting because many people probably just stayed logged in)
+
+**Time**: Time stamp of the last sign-in on this account
+
+**Year**: Year of the last sign-in on this account
+
+**Month**: Month of the last sign-in on this account
+
+**Day**: Day of the last sign-in on this account
+
+**Hour**: Hour of the last sign-in on this account
+
+**Minute**: Minute of the last sign-in on this account
+
+**Second**: Second of the last sign-in on this account
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+raw_account_summaries_colSpec <- cols(.default = "c")
+raw_account_summaries_file <- here(raw_files_mastodon_dir,
+                                   tolower(conditionName),
+                                   "users.csv")
+
+# read the summary data
+d_sum <- read_csv(file = raw_account_summaries_file, col_types = raw_account_summaries_colSpec) %>%
+  mutate(Condition=conditionName) %>%
+  rename(Time=last_sign_in_at,LoginN=sign_in_count,
+         UserName=account_id) %>%
+  select(UserName,Condition,LoginN,Time) %>%
+  mutate(UserName = str_replace_all(UserName,rv)) %>%
+  mutate(Year = year(Time),
+         Month = month(Time),
+         Day = day(Time),
+         Hour = hour(Time),
+         Minute = minute(Time),
+         Second = round(second(Time))) %>%
+  filter(Year>2023) %>%
+  left_join(d_names_short,by="UserName")
+
+processed_account_summaries_colSpec <- cols(.default = "c")
+processed_account_summaries_file <- here(processed_files_mastodon_dir,
+                                         tolower(conditionName),
+                                         "account_summaries.csv")
+
+d_sum %>% save_processed_file(file = processed_account_summaries_file)
+```
+
+### Status (post) summary data
+
+#### Hashtags
+
+This contains all of the hashtags for status. It can be found in `hashtags.csv` and the columns are:
+
+**StatusID**: The internal ID for the status/post which contains the hashtag
+
+**TagID**: The internal ID number for the tag
+
+**TagName**: The text of this tag
+
+**TagDisplay**: Basically the same as the name but with all the caps etc added, it is what people saw
+
+**StatusAuthor**: The person who wrote the post and added the tags
+
+**Troll**: This is 1 if the post comes from a troll account, 0 otherwise
+
+
+#### Summary
+
+Other summary information about the statuses/posts. It can be found in `status_summaries.csv` and the columns are:
+
+**StatusID**: The internal ID for this post, it matches the one in the other datasets
+
+**Condition**: Control (where we let them talk without us doing anything) or Right (where we had right-wing "bot" accounts) or Left (left-wing bots)
+
+**StatusAuthor**: The person who wrote the post/status in question
+
+**Troll**: This is 1 if it's a troll account, 0 otherwise
+
+**TimeCreated**: Time stamp that this post first occurred
+
+**TimeUpdated**: I assume that this is, if the post was edited, when that was, but I'm not sure
+
+**ReplyN**: Number of replies made to this post
+
+**ReblogsN**: Number of reblogs/retweets this post received
+
+**FavouritesN**: Number of favourites this post received
+
+**Year**: Year that this post occurred
+
+**Month**: Month that this post occurred
+
+**Day**: Day that this post occurred
+
+**Hour**: Hour that this post occurred
+
+**Minute**: Minute that this post occurred
+
+**Second**: Second that this post occurred
+
+**ExpDay**: Day1, Day2, Day3, etc, indicating the day of the experiment
+```{r}
+raw_tags_colSpec <- cols(.default = "c")
+raw_tags_file <- here(raw_files_mastodon_dir,
+                        tolower(conditionName),
+                        "tags.csv")
+
+# first read the tagID data
+tagIDs <- read_csv(file = raw_tags_file, col_types = raw_tags_colSpec) %>%
+  select(id,name,display_name) %>%
+  rename(TagID = id, TagName = name, TagDisplay = display_name)
+
+processed_tags_colSpec <- cols(.default = "c")
+processed_tags_file <- here(processed_files_mastodon_dir,
+                            tolower(conditionName),
+                            "tags.csv")
+
+tagIDs %>% save_processed_file(file = processed_tags_file)
+```
+
+```{r}
+raw_hashtags_colSpec <- cols(.default = "c")
+raw_hashtags_file <- here(raw_files_mastodon_dir,
+                         tolower(conditionName),
+                         "statuses_tags.csv")
+
+# now read the post summary data
+postIDs <- read_csv(file = raw_hashtags_file, col_types = raw_hashtags_colSpec) %>%
+  rename(StatusID=status_id,TagID=tag_id) %>%
+  left_join(tagIDs,by=join_by(TagID)) %>%
+  mutate(StatusID = as.character(StatusID)) %>%
+  left_join(d_statowner,by="StatusID") %>%
+  left_join(d_names_short,by="UserName") %>%
+  rename(StatusAuthor = UserName)
+
+processed_hashtags_colSpec <- cols(.default = "c")
+processed_hashtags_file <- here(processed_files_mastodon_dir,
+                                tolower(conditionName),
+                                "hashtags.csv")
+
+postIDs %>% save_processed_file(file = processed_hashtags_file)
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+raw_status_summaries_colSpec <- cols(.default = "c")
+raw_status_summaries_file <- here(raw_files_mastodon_dir,
+                                  tolower(conditionName),
+                                  "status_stats.csv")
+
+# read the post tag data for control condition
+d_posts <- read_csv(file = raw_status_summaries_file, col_types = raw_status_summaries_colSpec) %>%
+  mutate(Condition=conditionName) %>%
+  filter(created_at >= start_time & created_at <= end_time) %>% 
+  rename(PostID=id,TimeCreated=created_at,TimeUpdated=updated_at,
+         StatusID=status_id,ReplyN=replies_count,ReblogsN=reblogs_count,
+         FavouritesN=favourites_count) %>%
+  mutate(Year = year(TimeCreated),
+         Month = month(TimeCreated),
+         Day = day(TimeCreated),
+         Hour = hour(TimeCreated),
+         Minute = minute(TimeCreated),
+         Second = round(second(TimeCreated))) %>%
+  arrange(TimeCreated) %>%
+  mutate(Keep = case_when(as.integer(Year)==2023 ~ 0,
+                          as.integer(Month)<cMonth ~ 0,
+                          as.integer(Day)<(cDay+1) ~ 0,
+                          as.integer(Day)>(cDayEnd) ~ 0, 
+                          TRUE~1)) %>%
+  filter(Keep==1) %>%
+  mutate(ExpDay = case_when(as.integer(Day)==cDay+1 ~ "Day1",
+                            as.integer(Day)==cDay+2 ~ "Day2",
+                            as.integer(Day)==cDay+3 ~ "Day3",
+                            as.integer(Day)==cDay+4 ~ "Day4", 
+                            TRUE~"Day5")) %>%
+  mutate(StatusID = as.character(StatusID)) %>%
+  left_join(d_statowner,by="StatusID") %>%
+  left_join(d_names_short,by="UserName") %>%
+  rename(StatusAuthor = UserName) %>%
+  select(StatusID,Condition,StatusAuthor,Troll,TimeCreated,TimeUpdated,
+         ReplyN,ReblogsN,FavouritesN,Year,Month,Day,Hour,Minute,Second,ExpDay)
+
+processed_status_summaries_colSpec <- cols(.default = "c")
+processed_status_summaries_file <- here(processed_files_mastodon_dir,
+                                        tolower(conditionName),
+                                        "status_summaries.csv")
+
+d_posts %>% save_processed_file(file = processed_status_summaries_file)
+```
+
+### Blocks data
+
+All the info about who blocked who and when. Outputted to: `blocks.csv` and with the following columns
+
+**BckID**: The system number for the specific block
+
+**Condition**: Control (where we let them talk without us doing anything) or Right (where we had right-wing "bot" accounts) or Left (left-wing bots)
+
+**BlockerID**: The ID corresponding to the person who did the blocking
+
+**BlockerTroll**: Whether the blocker was a troll account, 1 if so, 0 otherwise
+
+**BlockedID**: The ID corresponding to the person who was blocked
+
+**BlockedTroll**: Whether the person who was blocked was a troll account, 1 if so, 0 otherwise
+
+**Time**: Time stamp that this favourite occurred
+
+**Year**: Year that this block occurred
+
+**Month**: Month that this block occurred
+
+**Day**: Day that this block occurred
+
+**Hour**: Hour that this block occurred
+
+**Minute**: Minute that this block occurred
+
+**Second**: Second that this block occurred
+
+**ExpDay**: Day1, Day2, Day3, etc, indicating the day of the experiment
+
+
+### Mutes data
+
+All the info about who blocked who and when. Outputted to: `mutes.csv` and with the following columns
+
+**MuID**: The system number for the specific mute
+
+**Condition**: Control (where we let them talk without us doing anything) or Right (where we had right-wing "bot" accounts) or Left (left-wing bots)
+
+**MuterID**: The ID corresponding to the person who did the muting
+
+**MuterTroll**: Whether the muter was a troll account, 1 if so, 0 otherwise
+
+**MutedID**: The ID corresponding to the person who was muted
+
+**MutedTroll**: Whether the muted person was a troll account, 1 if so, 0 otherwise
+
+**Time**: Time stamp that this mute occurred
+
+**Year**: Year that this mute occurred
+
+**Month**: Month that this mute occurred
+
+**Day**: Day that this mute occurred
+
+**Hour**: Hour that this mute occurred
+
+**Minute**: Minute that this mute occurred
+
+**Second**: Second that this mute occurred
+
+**ExpDay**: Day1, Day2, Day3, etc, indicating the day of the experiment
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+d_names_blocker <- d_names_short %>%
+  rename(BlockerID = UserName,BlockerTroll = Troll)
+d_names_blocked <- d_names_short %>%
+  rename(BlockedID = UserName,BlockedTroll = Troll)
+
+
+raw_blocks_colSpec <- cols(.default = "c")
+raw_blocks_file <- here(raw_files_mastodon_dir,
+                        tolower(conditionName),
+                        "blocks.csv")
+
+# read the summary data
+d_blocks <- read_csv(file = raw_blocks_file, col_types = raw_blocks_colSpec) %>%
+  mutate(Condition=conditionName) %>%
+  filter(created_at >= start_time & created_at <= end_time) %>% 
+  rename(BckID=id,Time=created_at, BlockerID = account_id,
+         BlockedID = target_account_id) %>%
+  mutate(BlockerID = str_replace_all(BlockerID,rv),
+         BlockedID = str_replace_all(BlockedID,rv)) %>%
+  mutate(Year = year(Time),
+         Month = month(Time),
+         Day = day(Time),
+         Hour = hour(Time),
+         Minute = minute(Time),
+         Second = round(second(Time))) %>%
+  arrange(Time) %>%
+  mutate(Keep = case_when(Year==2023 ~ 0,
+                          Month<cMonth ~ 0,
+                          Day<(cDay+1) ~ 0,
+                          Day>(cDayEnd) ~ 0, TRUE~1)) %>%
+  filter(Keep==1) %>%
+  mutate(ExpDay = case_when(Day==cDay+1 ~ "Day1",
+                            Day==cDay+2 ~ "Day2",
+                            Day==cDay+3 ~ "Day3",
+                            Day==cDay+4 ~ "Day4", TRUE~"Day5")) %>%
+  left_join(d_names_blocker,by="BlockerID") %>%
+  left_join(d_names_blocked,by="BlockedID") %>%
+  select(BckID,Condition,BlockerID,BlockerTroll,BlockedID,BlockedTroll,
+         Year,Month,Day,Hour,Minute,Second,ExpDay)
+
+processed_blocks_colSpec <- cols(.default = "c")
+processed_blocks_file <- here(processed_files_mastodon_dir,
+                              tolower(conditionName),
+                              "blocks.csv")
+
+d_blocks %>% save_processed_file(file = processed_blocks_file)
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+d_names_muter <- d_names_short %>%
+  rename(MuterID = UserName,MuterTroll = Troll)
+d_names_muted <- d_names_short %>%
+  rename(MutedID = UserName,MutedTroll = Troll)
+
+raw_mutes_colSpec <- cols(.default = "c")
+raw_mutes_file <- here(raw_files_mastodon_dir,
+                       tolower(conditionName),
+                       "mutes.csv")
+
+d_mutes <- read_csv(file = raw_mutes_file, col_types = raw_mutes_colSpec) %>%
+  mutate(Condition=conditionName) %>%
+  rename(MuID=id,Time=created_at, MuterID = account_id,
+         MutedID = target_account_id) %>%
+  mutate(MuterID = str_replace_all(MuterID,rv),
+         MutedID = str_replace_all(MutedID,rv)) %>%
+  mutate(Year = year(Time),
+         Month = month(Time),
+         Day = day(Time),
+         Hour = hour(Time),
+         Minute = minute(Time),
+         Second = round(second(Time))) %>%
+  arrange(Time) %>%
+  mutate(Keep = case_when(Year==2023 ~ 0,
+                          Month<cMonth ~ 0,
+                          Day<(cDay+1) ~ 0,
+                          Day>(cDayEnd) ~ 0, TRUE~1)) %>%
+  filter(Keep==1) %>%
+  mutate(ExpDay = case_when(Day==cDay+1 ~ "Day1",
+                            Day==cDay+2 ~ "Day2",
+                            Day==cDay+3 ~ "Day3",
+                            Day==cDay+4 ~ "Day4", TRUE~"Day5")) %>%
+  left_join(d_names_muter,by="MuterID") %>%
+  left_join(d_names_muted,by="MutedID") %>%
+  select(MuID,Condition,MuterID,MuterTroll,MutedID,MutedTroll,Time,
+         Year,Month,Day,Hour,Minute,Second,ExpDay)
+
+processed_mutes_colSpec <- cols(.default = "c")
+processed_mutes_file <- here(processed_files_mastodon_dir,
+                             tolower(conditionName),
+                             "mutes.csv")
+
+d_mutes %>% save_processed_file(file = processed_mutes_file)
+```
+
+### Polls data
+
+All the info about the polls that were ran. `statuses.csv` has the poll itself but not the results or what the options were. This file has that info.  `polls.csv` and with the following columns
+
+**PollID**: The system number for the specific poll
+
+**Condition**: Control (where we let them talk without us doing anything) or Right (where we had right-wing "bot" accounts) or Left (left-wing bots)
+
+**PollerID**: The ID corresponding to the person who set up the poll (no troll accounts ever set up polls)
+
+**StatusID**: The ID corresponding to the poll
+
+**PollText**: The text of the poll, i.e., what people saw it was about (``Is climate change real?'' kind of thing)
+
+**PollOptions**: The options people were given, in the order they were given. Separated by commas.
+
+**PollAnswers**: The number of answers selected for each option. For instance, {1,3} would mean one person selected the first option and three selected the second.
+
+**VotesN**: Total number of votes
+
+**Time**: Time stamp that this poll was set up
+
+**Year**: Day that this poll was set up
+
+**Month**: Day that this poll was set up
+
+**Day**: Day that this poll was set up
+
+**Hour**: Hour that this poll was set up
+
+**Minute**: Minute that this poll was set up
+
+**Second**: Second that this poll was set up
+
+**ExpDay**: Day1, Day2, Day3, etc, indicating the day of the experiment
+
+
+### Poll voting data
+
+The previous file doesn't contain the information about how each person voted. That is here. Outputted to `poll_votes.csv` and with the following columns.
+
+**PollID**: The system number for the specific poll
+
+**Condition**: Control (where we let them talk without us doing anything) or Right (where we had right-wing "bot" accounts) or Left (left-wing bots)
+
+**VoterID**: The ID corresponding to the person who put in that vote. (Trolls never voted so there is no VoterTroll column.)
+
+**PollText**: The text of the poll, i.e., what people saw it was about (``Is climate change real?'' kind of thing)
+
+**PollOptions**: The options people were given, in the order they were given. Separated by commas.
+
+**Vote**: The option chosen by that person. Starts indexing at 0, so 0 means it was the first option in the PollOption list.
+
+**Time**: Time stamp that this person voted
+
+**Year**: Year that this person voted
+
+**Month**: Month that this person voted
+
+**Day**: Day that this person voted
+
+**Hour**: Hour that this person voted
+
+**Minute**: Minute that this person voted
+
+**Second**: Second that this person voted
+
+**ExpDay**: Day1, Day2, Day3, etc, indicating the day of the experiment
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+# read the summary data
+dstat_text <- d_stat %>% select(StatusID,Text)
+
+raw_polls_colSpec <- cols(.default = "c")
+raw_polls_file <- here(raw_files_mastodon_dir,
+                       tolower(conditionName),
+                       "polls.csv")
+
+d_poll <- read_csv(file = raw_polls_file, col_types = raw_polls_colSpec) %>%
+  mutate(Condition=conditionName) %>%
+  filter(created_at >= start_time & created_at <= end_time) %>% 
+  rename(PollID=id,Time=created_at, PollerID = account_id,
+         StatusID = status_id, PollOptions = options,
+         PollAnswers = cached_tallies, VotesN = votes_count) %>%
+  mutate(PollerID = str_replace_all(PollerID,rv)) %>%
+  mutate(Year = year(Time),
+         Month = month(Time),
+         Day = day(Time),
+         Hour = hour(Time),
+         Minute = minute(Time),
+         Second = round(second(Time))) %>%
+  arrange(Time) %>%
+  mutate(Keep = case_when(Year==2023 ~ 0,
+                          Month<cMonth ~ 0,
+                          Day<(cDay+1) ~ 0,
+                          Day>(cDayEnd) ~ 0, TRUE~1)) %>%
+  filter(Keep==1) %>%
+  mutate(ExpDay = case_when(Day==cDay+1 ~ "Day1",
+                            Day==cDay+2 ~ "Day2",
+                            Day==cDay+3 ~ "Day3",
+                            Day==cDay+4 ~ "Day4", TRUE~"Day5")) %>%
+  mutate(StatusID = as.character(StatusID)) %>%
+  left_join(dstat_text,by="StatusID") %>%
+  rename(PollText = Text) %>%
+  select(PollID,Condition,PollerID,StatusID,PollText,PollOptions,PollAnswers,
+         VotesN,Time,Year,Month,Day,Hour,Minute,Second,ExpDay)
+
+processed_polls_colSpec <- cols(.default = "c")
+processed_polls_file <- here(processed_files_mastodon_dir,
+                             tolower(conditionName),
+                             "polls.csv")
+
+d_poll %>% save_processed_file(file = processed_polls_file)
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+dpollList <- d_poll %>% select(PollID,PollText,PollOptions)
+
+raw_votes_colSpec <- cols(.default = "c")
+raw_votes_file <- here(raw_files_mastodon_dir,
+                       tolower(conditionName),
+                       "poll_votes.csv")
+
+d_vote <- read_csv(file = raw_votes_file, col_types = raw_votes_colSpec) %>%
+  mutate(Condition=conditionName) %>%
+  filter(created_at >= start_time & created_at <= end_time) %>% 
+  rename(PollID=poll_id,Time=created_at, VoterID = account_id,
+         Vote = choice) %>%
+  mutate(VoterID = str_replace_all(VoterID,rv)) %>%
+  mutate(Year = year(Time),
+         Month = month(Time),
+         Day = day(Time),
+         Hour = hour(Time),
+         Minute = minute(Time),
+         Second = round(second(Time))) %>%
+  arrange(Time) %>%
+  mutate(Keep = case_when(Year==2023 ~ 0,
+                          Month<cMonth ~ 0,
+                          Day<(cDay+1) ~ 0,
+                          Day>(cDayEnd) ~ 0, TRUE~1)) %>%
+  filter(Keep==1) %>%
+  mutate(ExpDay = case_when(Day==cDay+1 ~ "Day1",
+                            Day==cDay+2 ~ "Day2",
+                            Day==cDay+3 ~ "Day3",
+                            Day==cDay+4 ~ "Day4", TRUE~"Day5")) %>%
+  mutate(VoterID = str_replace_all(VoterID,rv)) %>%
+  left_join(dpollList,by="PollID") %>%
+  select(PollID,Condition,VoterID,PollText,PollOptions,Vote,Time,
+         Year,Month,Day,Hour,Minute,Second,ExpDay)
+
+processed_votes_colSpec <- cols(.default = "c")
+processed_votes_file <- here(processed_files_mastodon_dir,
+                             tolower(conditionName),
+                             "poll_votes.csv")
+
+d_vote %>% save_processed_file(file = processed_votes_file)
+```
+
+### TODO User summary data
+
+This creates user-level summary data. For each person, how many posts, reblogs, favourites given, favourites received, etc.
+
+**Subject**: The random nine-letter code which is a unique identifier for each person. Maps onto the same code for the Before and After survey data. This is the person who made the post/reply/reblog.
+
+**UserName**: Their username on Magpie, like FragrantWombat or whatever
+
+**Troll**: 1 if this person was a troll account, 0 otherwise
+
+**Condition**: Control (where we let them talk without us doing anything) or Right (where we had right-wing "bot" accounts) or Left (left-wing bots)
+
+**LoginN**: Number of times they logged in. Probably not very informative beacuse people could just stay logged in.
+
+**FollowingN**: Number of people they are following. Everyone should be following at least 1, the Admin, unless they manually unfollowed.
+
+**FollowerN**: Number of people following them.
+
+**PostN**: Total number of posts made by that person. A post is something someone writes that isn't a reply to somebody else.
+
+**ReplyN**: Total number of replies made by that person. A reply is always done in response to another post.
+
+**ReblogN**: Total number of reblogs made by that person. A reblog is when they boost another post.
+
+**FavouritesN**: Total number of favourites (stars) given by that person. You give a favourite/star to a post, usually from someone else.
+
+**WasRepliedToN**: Total number of replies that person *received*. This is when somebody responded to them. Self-replies are included.
+
+**WasRebloggedN**: Total number of reblogs that person *received*. This is when somebody boosted this person's post. Self-reblogs are included.
+
+**WasFavouritedN**: Total number of favourites (stars) that person *received*. This is when this person's post received a star. Self-favourites are included.
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+# first extract key info from the existing summary data
+myNames <- d_names %>% select(UserName,Subject)
+d_user <- d_sum %>%
+  select(UserName,Condition,LoginN) %>%
+  left_join(myNames,by="UserName")
+
+dsum <- d_stat %>%
+  group_by(UserName) %>%
+  summarise(StatusN = n_distinct(StatusID,na.rm=TRUE),
+            ReblogN = n_distinct(StatusReblogID,na.rm=TRUE),
+            ReplyN = n_distinct(StatusReplyID,na.rm=TRUE),
+            PostN = StatusN - ReblogN - ReplyN) %>%
+  ungroup() %>%
+  select(-c(StatusN))
+
+dTo <- d_stat %>%
+  filter(!is.na(AccountReply)) %>%
+  group_by(AccountReply) %>%
+  summarise(WasRepliedToN = n_distinct(StatusID,na.rm=TRUE)) %>%
+  ungroup() %>%
+  rename(UserName = AccountReply)
+
+dsum <- dsum %>% left_join(dTo,by="UserName")  %>%
+  mutate(WasRepliedToN = replace_na(WasRepliedToN,0))
+
+dTo <- d_stat %>%
+  filter(!is.na(AccountReblog)) %>%
+  group_by(AccountReblog) %>%
+  summarise(WasRebloggedN = n_distinct(StatusID,na.rm=TRUE)) %>%
+  ungroup() %>%
+  rename(UserName = AccountReblog)
+
+dsum <- dsum %>% left_join(dTo,by="UserName") %>%
+  mutate(WasRebloggedN = replace_na(WasRebloggedN,0))
+
+# now add info about favourites and followers
+
+dF <- d_fav %>%
+  group_by(FavouriterID) %>%
+  summarise(FavouritesN = n_distinct(StatusID,na.rm=TRUE)) %>%
+  ungroup() %>%
+  rename(UserName = FavouriterID)
+
+dsum <- dsum %>% left_join(dF,by="UserName") %>%
+  mutate(FavouritesN = replace_na(FavouritesN,0))
+
+dF <- d_fav %>%
+  group_by(FavouritedID) %>%
+  summarise(WasFavouritedN = n_distinct(StatusID,na.rm=TRUE)) %>%
+  ungroup() %>%
+  rename(UserName = FavouritedID)
+
+dsum <- dsum %>% left_join(dF,by="UserName") %>%
+  mutate(WasFavouritedN = replace_na(WasFavouritedN,0))
+
+dF <- d_fol %>%
+  group_by(FollowerID) %>%
+  summarise(FollowingN = n_distinct(FollowingID,na.rm=TRUE)) %>%
+  ungroup() %>%
+  rename(UserName = FollowerID)
+
+dsum <- dsum %>% left_join(dF,by="UserName") %>%
+  mutate(FollowingN = replace_na(FollowingN,0))
+
+dF <- d_fol %>%
+  group_by(FollowingID) %>%
+  summarise(FollowerN = n_distinct(FollowerID,na.rm=TRUE)) %>%
+  ungroup() %>%
+  rename(UserName = FollowingID)
+
+dsum <- dsum %>% left_join(dF,by="UserName") %>%
+  mutate(FollowerN = replace_na(FollowerN,0))
+
+# now combine
+d_user <- d_user %>% left_join(dsum,by="UserName") %>%
+  left_join(d_names_short,by="UserName") %>%
+  mutate(across(where(is.numeric), ~replace_na(., 0))) %>%
+  select(Subject,UserName,Troll,Condition,LoginN,FollowingN,FollowerN,
+         PostN,ReplyN,ReblogN,FavouritesN,
+         WasRepliedToN,WasRebloggedN,WasFavouritedN)
+
+processed_user_colSpec <- cols(.default = "c")
+processed_user_file <- here(processed_files_mastodon_dir,
+                            tolower(conditionName),
+                            "user_summaries.csv")
+
+d_user %>% save_processed_file(file = processed_user_file)
+```
+
+### Other
+
+There are a few other things we *could* look at, like the list of bookmarks or notifications people got, but I don't think those are probably interesting enough to be worth the time at this point.
+
+```{r eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+# create dataset for honours students
+d <- read_csv(here(paste0("files/combined/after.csv")))
+
+d <- d %>% filter(Condition=="Control") %>%
+  left_join(d_user,by=c("Subject","UserName","Condition")) %>%
+  select(-c(LoginN))
+
+write_csv(d,here("files/combined/control_after_with_engagement.csv"))
+```

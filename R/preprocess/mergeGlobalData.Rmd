@@ -1,0 +1,833 @@
+---
+title: "Merge Global Data across Conditions"
+output:
+  html_document:
+    df_print: paged
+---
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+rm(list=ls())
+library(tidyverse)
+library(here)
+library(stringi)
+library(assertthat)
+library(jsonlite)
+library(lubridate)
+
+options(scipen=999,digits=20)
+
+DRY_RUN <- FALSE
+```
+
+Data directory
+```{r}
+raw_magpie_dir <- "data/magpie/original"
+processed_magpie_dir <- "data/magpie/processed"
+raw_files_mastodon_dir <- "data/mastodon/files/raw"
+processed_files_mastodon_dir <- "data/mastodon/files/processed"
+```
+
+```{r}
+
+save_processed_file = function(data, file, dry_run = DRY_RUN) {
+  if (! dry_run) {
+    # create the directory if it does not exist
+    dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+    cat("saving to: ", file)
+    write_csv(data, file=file)
+  } else {
+    cat("(dry_run) skipping saving to: ", file)
+  }
+}
+```
+
+Next, let's just check that "here()" returns what we think it should. If things are configured correctly, here should relate to the top-level directory for the project - as per the github repository.
+
+```{r}
+# Assert that the here() function returns what we expect.
+# We do this by checking that it contains the "R" and "data" directories.
+
+assert_that(
+    dir.exists(file.path(here(), "R")),
+    msg = "The 'here()' function does not point to the expected directory."
+)
+```
+
+The readr package (e.g. v2.1.5 under R 4.5) has a "bug" such that when read_csv is used
+to read columns containing numeric values > 32 bit (e.g. integer values used as database keys,
+for example), the value may be silently corrupted. The root cause seems to be that R (e.g. 4.5)
+silently misrepresents the long numbers when converting to "numeric" type.
+
+For example, the follwing code yields FALSE where it should return TRUE
+
+<pre>
+id <- "112911754871964075"
+as.character(as.numeric(id)) == id
+</pre>
+
+The following check determines whether the current version of readr/R has the bug or not,
+in case a version is released that guards against the underyling issue.
+
+```{r}
+#sessionInfo()
+
+# show current package versions
+readr_version <- packageVersion("readr")
+
+# The following simulates a single column CSV file where the
+# each row contains a different number.
+
+data <- "MySQLID\n112917130127682334\n112917130127682336"
+
+# read_csv does not have a "text" argument
+ids <- read_csv(file = I(data), show_col_types = FALSE)
+
+# The two numbers are different, so the following assertion should hold.
+# However, due to the aforementioned bug, this assertion is likely to fail.
+
+readr_preserves <- ids[1, 1] != ids[2, 1]
+
+cat(paste0("readr::read_csv ",
+           readr_version,
+           ifelse(readr_preserves, " does", " does not"),
+           " preserve long numeric identifiers\n")
+)
+
+ids_correct <- read_csv(col_types = cols(MySQLID = "c"), file = I(data))
+
+ignoreSuccess <- assert_that(ids_correct[1, 1] != ids_correct[2, 1],
+                             msg = "readr::read_csv workaround failed")
+
+cat("But using explicit col_types works as expected")
+
+```
+
+# Make global participants by condition
+
+```{r}
+condition = "left"
+```
+
+## Load the mastodon participant data.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# first load the mastodon participant data
+mastodon_participant_colSpec <- cols_only(account_id = "c", UserName = "c")
+
+mastodon_participant_file <- here(raw_magpie_dir,
+                                  tolower(condition),
+                                  "mastodon_participant_ids.csv")
+
+mastodon_account_ids <-
+  read_csv(file = mastodon_participant_file,
+           col_types = mastodon_participant_colSpec) %>%
+  rename(MagpieID = account_id)
+```
+
+```{r}
+prolific_participant_colSpec <- cols(.default = "c")
+
+prolific_participant_file <- here(raw_magpie_dir,
+                                  tolower(condition),
+                                  "prolific_participant_ids.csv")
+
+prolific_account_ids <-
+  read_csv(file = prolific_participant_file,
+           col_types = prolific_participant_colSpec)
+```
+
+# Create a file containing the full set of identifiers (mastodon, prolific, qualtrics etc.)
+
+```{r}
+d_names <-
+  prolific_account_ids %>%
+  mutate(Troll = as.numeric(startsWith(ProlificID, "fake")))
+```
+
+```{r}
+d_init <- mastodon_account_ids %>%
+  left_join(d_names,by="UserName") %>%
+  mutate(Subject = ifelse(UserName=="Admin", "Admin", Subject))
+
+global_participant_colSpec <- cols(Troll = "n", .defult = "c")
+
+global_participant_file <- here(processed_magpie_dir,
+                                tolower(condition),
+                                "global_participant_ids.csv")
+
+d_init %>% save_processed_file(file = global_participant_file)
+```
+
+# M24-CPAR
+
+## Load demographics
+```{r}
+demographics_colSpec <- cols(.default = "c")
+
+demographics_file <- here(
+  raw_magpie_dir,
+  "combined",
+  "demographics.csv"
+)
+
+demographics <- read_csv(
+    file      = demographics_file,
+    col_types = demographics_colSpec
+  ) %>%
+  # 1) normalize the condition column name & values
+  rename(condition = Condition) %>%
+  mutate(condition = tolower(condition)) %>%
+  
+  # 2) drop all the "after" timepoints, keep only the "before"
+  filter(tolower(TimePoint) == "before") %>%
+  
+  # 3) now distinct() so each (condition, UserName) appears only once
+  distinct(condition, UserName, .keep_all = TRUE)
+```
+
+## Combine 3 condition
+```{r}
+# Define conditions and column specification
+conditions <- c("control", "right", "left")
+global_participant_colSpec <- cols(Troll = "n", .default = "c")
+
+# Read, tag with condition, and combine files
+combined_global <- map_dfr(
+  conditions,
+  function(cond) {
+    global_participant_file <- here(processed_magpie_dir, tolower(cond), "global_participant_ids.csv")
+    read_csv(file = global_participant_file, col_types = global_participant_colSpec) %>%
+      mutate(condition = cond)
+  }
+)
+
+combined_global <- combined_global %>% 
+  left_join(
+    demographics %>% 
+      select(
+        condition,
+        UserName,
+        Age,
+        Sex,
+        Gender,
+        PoliticalID,
+        PoliticalIDNum,
+      ),
+    by = c("condition", "UserName")
+  )
+
+# Rename columns
+combined_global <- combined_global %>%
+  rename(
+    age = Age,
+    sex = Sex,
+    gender = Gender,
+    political_id = PoliticalID,
+    political_id_numetric = PoliticalIDNum,
+    mastodon_account_id = MagpieID,
+    mastodon_username = UserName,
+    mastodon_display_name = UserNameSpaces,
+    is_confederate = Troll,
+    qualtrics_subject_id = Subject,
+    prolific_participant_id = ProlificID
+  ) %>%
+  # Reorder columns
+  select(
+    condition, 
+    mastodon_account_id, 
+    mastodon_username,
+    mastodon_display_name,
+    is_confederate,
+    qualtrics_subject_id,
+    prolific_participant_id,
+    age,
+    sex,
+    gender,
+    political_id_numetric,
+    political_id,
+  )
+
+# Define output file path
+combined_global_file <- here(processed_magpie_dir, "combined", "combined_participant_ids.csv")
+
+# Save combined result
+save_processed_file(combined_global, file = combined_global_file)
+  
+```
+
+
+# M24-CSTAT
+
+## Load Bao's label message (condition, status_id, message_topic, condition)
+
+```{r}
+# 1. Your three conditions
+conditions <- c("control", "left", "right")
+
+# 2. Read & combine all three JSONs into one tibble
+all_annotations <- map_dfr(
+  conditions,
+  function(cond) {
+    file_path <- here(processed_files_mastodon_dir, tolower(cond), "status_groundtruth.json")
+    raw      <- fromJSON(file_path)
+    
+    # flatten each conversation → rows of (status_id, message_topic)
+    map_dfr(
+      raw,
+      function(status_map) {
+        tibble(
+          status_id     = names(status_map),
+          message_topic_rater_1 = as.character(status_map)
+        )
+      },
+      .id = "conversation_id"
+    ) %>%
+      mutate(condition = cond)
+  }
+)
+
+# 4. Save out
+annotations_colSpec <- cols(.default = "c")
+annotations_output_file <- here(
+  processed_files_mastodon_dir,
+  "combined",
+  "statuses_with_annotations.csv"   # or whatever name you prefer
+)
+
+all_annotations %>% 
+  save_processed_file(file = annotations_output_file)
+```
+
+## Set condition and root date
+
+```{r}
+condition <- "right"
+
+if (condition == "control") {
+  start_time <- ymd_hms("2024-08-06 21:00:00")
+  end_time   <- ymd_hms("2024-08-09 21:00:00")
+} else if (condition == "right") {
+  start_time <- ymd_hms("2024-08-20 21:00:00")
+  end_time   <- ymd_hms("2024-08-23 21:00:00")
+} else if (condition == "left") {
+  start_time <- ymd_hms("2024-09-03 20:30:00")
+  end_time   <- ymd_hms("2024-09-06 20:30:00")
+} else {
+  stop("Unknown condition: ", condition)
+}
+```
+
+Load additional csv files 
+
+```{r}
+global_participant_colSpec <- cols(Troll = "n", .default = "c")
+
+global_participant_file <- here(processed_magpie_dir,
+                                tolower(condition),
+                                "global_participant_ids.csv")
+
+d_init <- read_csv(file = global_participant_file, col_types = global_participant_colSpec)
+
+prolific_participant_colSpec <- cols(.default = "c")
+
+prolific_participant_file <- here(raw_magpie_dir,
+                                  tolower(condition),
+                                  "prolific_participant_ids.csv")
+
+prolific_account_ids <-
+  read_csv(file = prolific_participant_file,
+           col_types = prolific_participant_colSpec)
+
+d_names <-
+  prolific_account_ids %>%
+  mutate(Troll = as.numeric(startsWith(ProlificID, "fake")))
+```
+
+## Create processed status.csv
+
+```{r}
+replacementVec <- d_init %>% select(MagpieID,UserName) %>%
+  filter(!is.na(MagpieID)) %>% arrange(MagpieID)
+rv <- replacementVec$UserName
+names(rv) <- replacementVec$MagpieID
+
+raw_statuses_colSpec <- cols(.default = "c")
+raw_statuses_file <- here(raw_files_mastodon_dir,
+                      tolower(condition),
+                      "statuses.csv")
+
+# read the statuses data
+d_stat <- read_csv(file = raw_statuses_file, col_types = raw_statuses_colSpec) %>%
+  rename(StatusID=id,Time=created_at,MagpieID=account_id,
+         StatusReplyID=in_reply_to_id,
+         StatusReblogID=reblog_of_id,Reply=reply,Visibility=visibility,
+         ConvID=conversation_id,AccountReply=in_reply_to_account_id,
+         PollID=poll_id,DeletedTime=deleted_at,EditedTime=edited_at,
+         AttachID=ordered_media_attachment_ids,Text=text)
+
+d_stat$MagpieID <- as.character(d_stat$MagpieID)
+d_stat <- d_stat %>%
+  left_join(d_init,by=join_by(MagpieID)) %>%
+  mutate(condition=condition) %>%
+  select(Subject,UserName,condition,Time,StatusID,StatusReplyID,
+         StatusReblogID,Reply,Visibility,AccountReply,ConvID,PollID,
+         AttachID,PollID,DeletedTime,
+         EditedTime,Text) %>%
+  mutate(Text = str_replace_all(Text,rv)) %>%
+  mutate(AccountReply = str_replace_all(AccountReply,rv)) %>%
+  filter(ymd_hms(Time) >= start_time, ymd_hms(Time) <= end_time)
+
+d_stat$StatusID <- as.character(d_stat$StatusID)
+d_stat$StatusReplyID <- as.character(d_stat$StatusReplyID)
+d_stat$StatusReblogID <- as.character(d_stat$StatusReblogID)
+d_stat$AccountReply <- as.character(d_stat$AccountReply)
+
+d_statowner <- d_stat %>% select(StatusID,UserName) %>% arrange(StatusID)
+userRV <- d_statowner$UserName
+names(userRV) <- d_statowner$StatusID
+
+d_names_short <- d_names %>% select(UserName,Troll)
+
+d_stat <- d_stat %>%
+  mutate(AccountReblog = str_replace_all(StatusReblogID,userRV)) %>%
+  left_join(d_names_short,by="UserName")
+
+for (i in 1:nrow(d_stat)) {
+  if (!is.na(d_stat$StatusReblogID[i])) {
+    j <- which(d_stat$StatusID==d_stat$StatusReblogID[i])
+    if (length(j)>0) {
+      d_stat$Text[i] <- d_stat$Text[j]
+    }
+  }
+}
+
+processed_statuses_colSpec <- cols(.default = "c")
+processed_statuses_file <- here(processed_files_mastodon_dir,
+                      tolower(condition),
+                      "statuses.csv")
+
+d_stat %>% save_processed_file(file = processed_statuses_file)
+```
+
+## Create processed status_summaries.csv
+
+```{r}
+# read the post tag data for control condition
+raw_statuses_stats_colSpec <- cols(.default = "c")
+raw_statuses_stats_file <- here(raw_files_mastodon_dir,
+                          tolower(condition),
+                          "status_stats.csv")
+
+d_posts <- read_csv(file = raw_statuses_stats_file, col_types =  raw_statuses_stats_colSpec) %>%
+  mutate(condition=tolower(condition)) %>%
+  rename(PostID=id,TimeCreated=created_at,TimeUpdated=updated_at,
+         StatusID=status_id,ReplyN=replies_count,ReblogsN=reblogs_count,
+         FavouritesN=favourites_count) %>%
+  mutate(StatusID = as.character(StatusID)) %>%
+  left_join(d_statowner,by="StatusID") %>%
+  left_join(d_names_short %>% 
+              filter(!is.na(UserName)), by = "UserName") %>%
+  rename(StatusAuthor = UserName) %>%
+  select(StatusID,condition,StatusAuthor,Troll,TimeCreated,TimeUpdated,
+         ReplyN,ReblogsN,FavouritesN) %>%
+  filter(ymd_hms(TimeCreated) >= start_time, ymd_hms(TimeCreated) <= end_time)
+
+
+processed_statuses_stats_colSpec <- cols(.default = "c")
+processed_statuses_stats_file <- here(processed_files_mastodon_dir,
+                                    tolower(condition),
+                                    "status_summaries.csv")
+
+d_posts %>% save_processed_file(file = processed_statuses_stats_file)
+```
+
+## Create processed statuses_full.csv
+
+```{r}
+d_stats_full <- d_stat %>%
+  left_join(
+    d_posts %>% select(StatusID, ReplyN, ReblogsN, FavouritesN),
+    by = "StatusID"
+  ) %>%
+  
+  # 2) Rename the core columns so they match combined_global
+  rename(
+    mastodon_username    = UserName,
+    qualtrics_subject_id = Subject,
+    is_confederate       = Troll
+  ) %>%
+  
+  # 3) Join in account‐level metadata from combined_global
+  left_join(
+    combined_global %>% 
+      select(
+        condition, 
+        mastodon_account_id, 
+        mastodon_username,
+        mastodon_display_name,
+        prolific_participant_id,
+        age,
+        sex,
+        gender,
+        political_id_numetric,
+        political_id,
+      ),
+    by = c("condition", "mastodon_username")
+  ) %>%
+
+  # 4) Rename the engagement stats
+  rename(
+    status_id        = StatusID,
+    conversation_id  = ConvID,
+    text             = Text,
+    creation_time    = Time,
+    last_edit_time   = EditedTime,
+    replies_count    = ReplyN,
+    reblogs_count    = ReblogsN,
+    favourites_count = FavouritesN,
+    is_reply_to      = StatusReplyID,
+    replied_to_username = AccountReply,
+    is_reblog_of        = StatusReblogID,
+    reblogged_username  = AccountReblog,
+  ) 
+
+processed_statuses_full_colSpec <- cols(.default = "c", 
+                                        replies_count    = "n",
+                                        reblogs_count    = "n",
+                                        favourites_count = "n"
+                                    )
+processed_statuses_full_file <- here(processed_files_mastodon_dir,
+                                    tolower(condition),
+                                    "statuses_full.csv")
+
+d_stats_full %>% save_processed_file(file = processed_statuses_full_file)
+```
+
+```{r}
+sum(duplicated(d_stat$StatusID))     # number of duplicates in d_stat
+sum(duplicated(d_posts$StatusID))    # number of duplicates in d_posts
+```
+
+## Combined statuses_full from 3 conditions
+
+```{r}
+processed_statuses_full_colSpec <- cols(.default = "c", 
+                                        replies_count    = "n",
+                                        reblogs_count    = "n",
+                                        favourites_count = "n"
+                                        )
+
+# 2. Which folders to pull in
+conditions <- c("left", "right", "control")
+
+# 3. Read & tag each condition’s file
+all_statuses_full <- map_dfr(conditions, function(cond) {
+  read_csv(
+    here(processed_files_mastodon_dir, tolower(cond), "statuses_full.csv"),
+    col_types = processed_statuses_full_colSpec
+  ) %>%
+    mutate(condition = cond)
+})
+
+# 4. Bring in your annotations (conversation_id + message_topic)
+all_statuses_full <- all_statuses_full %>%
+  left_join(
+    all_annotations %>%
+      select(
+        status_id,
+        condition,
+        message_topic_rater_1
+      ),
+    by = c("status_id", "condition")
+  )
+
+# 5. Derive reply/reblog flags and the corresponding usernames
+#    (assumes you already have a named vector `rv` mapping MagpieID→UserName)
+all_statuses_full <- all_statuses_full %>%
+  mutate(
+    is_reply            = !is.na(is_reply_to),
+    is_reblog           = !is.na(is_reblog_of),
+  )
+  
+# 6. Reorder exactly as you asked
+all_statuses_full <- all_statuses_full %>%
+  select(
+    condition, 
+    mastodon_account_id, 
+    mastodon_username,
+    mastodon_display_name,
+    is_confederate,
+    qualtrics_subject_id,
+    prolific_participant_id,
+    age,
+    sex,
+    gender,
+    political_id_numetric,
+    political_id,
+    status_id,
+    conversation_id,
+    text,
+    message_topic_rater_1,
+    creation_time,
+    last_edit_time,
+    replies_count,
+    reblogs_count,
+    favourites_count,
+    is_reply,
+    is_reply_to,
+    replied_to_username,
+    is_reblog,
+    is_reblog_of,
+    reblogged_username,
+  )
+processed_statuses_global_file <- here(
+  processed_magpie_dir,
+  "combined",
+  "combined_statuses_with_global_ids.csv"
+)
+
+all_statuses_full %>% 
+  save_processed_file(file = processed_statuses_global_file)
+    
+```
+
+# Get time window for each condition
+```{r}
+time_windows <- all_statuses_full %>%
+  # 1) Parse the Time column, including fractional seconds:
+  mutate(creation_time = ymd_hms(creation_time)) %>%
+  # 2) Group by condition:
+  group_by(condition) %>%
+  # 3) Compute min and max of Time:
+  summarise(
+    start_time = min(creation_time, na.rm = TRUE),
+    end_time   = max(creation_time, na.rm = TRUE),
+    time_diff  = end_time - start_time
+  )
+
+time_windows
+```
+
+# M24-BLF
+claim_topic,
+short_text,
+polarity,
+belief_adjusted_pre,
+belief_raw_pre,
+belief_distance_from_centre_pre,
+belief_adjusted_post,
+belief_raw_post,
+belief_distance_from_centre_post,
+belief_adjusted_delta,
+belief_raw_delta,
+belief_distance_from_centre_delta
+order,
+code,
+claim
+
+```{r}
+belief_colSpec <- cols(.default = "c",
+                       Belief = "n", 
+                       RawBelief = "n", 
+                       ExtremeBelief = "n")
+
+# 2. File path
+belief_file <- here(raw_magpie_dir, "combined", "beliefs_long.csv")
+
+# 3. Read & rename the anchor columns
+belief_long <- read_csv(belief_file, col_types = belief_colSpec) %>%
+  rename(
+    qualtrics_subject_id  = Subject,
+    mastodon_username     = UserName,
+    condition             = Condition,
+    claim_topic           = Topic,
+    short_text            = ShortText,
+    polarity              = Polarity,
+    order                 = Order,
+    code                  = Code,
+    claim                 = Claim
+  ) %>%
+  # normalize TimePoint for pivoting
+  mutate(TimePoint = tolower(TimePoint),
+         condition = tolower(condition),
+         )
+
+# 4. Pivot wider so each metric has _before and _after columns
+belief_wide <- belief_long %>%
+  pivot_wider(
+    id_cols     = c(
+      qualtrics_subject_id, mastodon_username, condition, claim_topic, short_text,
+      polarity, order, code, claim
+    ),
+    names_from  = TimePoint,
+    values_from = c(Belief, RawBelief, ExtremeBelief),
+    names_glue  = "{.value}_{TimePoint}"
+  ) %>%
+  # 5. Rename into your _pre / _post schema
+  rename(
+    belief_adjusted_pre               = Belief_before,
+    belief_raw_pre                    = RawBelief_before,
+    belief_distance_from_centre_pre   = ExtremeBelief_before,
+    belief_adjusted_post              = Belief_after,
+    belief_raw_post                   = RawBelief_after,
+    belief_distance_from_centre_post  = ExtremeBelief_after
+  ) %>%
+  # 6. Compute the deltas
+  mutate(
+    belief_adjusted_delta               = belief_adjusted_post - belief_adjusted_pre,
+    belief_raw_delta                    = belief_raw_post - belief_raw_pre,
+    belief_distance_from_centre_delta   = belief_distance_from_centre_post - belief_distance_from_centre_pre
+  ) %>%
+  # 5. Join in subject metadata from combined_global
+  left_join(
+    combined_global, 
+    by = c("condition", "qualtrics_subject_id", "mastodon_username")
+  ) %>%
+  select(
+    condition, 
+    mastodon_account_id, 
+    mastodon_username,
+    mastodon_display_name,
+    is_confederate,
+    qualtrics_subject_id,
+    prolific_participant_id,
+    age,
+    sex,
+    gender,
+    political_id_numetric,
+    political_id,
+    claim_topic,
+    short_text,
+    polarity,
+    belief_adjusted_pre,
+    belief_raw_pre,
+    belief_distance_from_centre_pre,
+    belief_adjusted_post,
+    belief_raw_post,
+    belief_distance_from_centre_post,
+    belief_adjusted_delta,
+    belief_raw_delta,
+    belief_distance_from_centre_delta,
+    order,
+    code,
+    claim,
+  )
+
+# Define output file path
+combined_belief_wide_file <- here(processed_magpie_dir, "combined", "combined_beliefs_wide.csv")
+
+# Save combined result
+save_processed_file(belief_wide, file = combined_belief_wide_file)
+```
+
+# M24-THERM
+```{r}
+thermometer_colSpec <- cols(.default = "c")
+
+before_file <- here(raw_magpie_dir, "combined", "before.csv")
+after_file  <- here(raw_magpie_dir, "combined", "after.csv")
+
+# 3. Read each in and tag with time_point
+before <- read_csv(before_file,  col_types = thermometer_colSpec) %>% 
+  mutate(time_point = "before")
+
+after  <- read_csv(after_file,   col_types = thermometer_colSpec) %>% 
+  mutate(time_point = "after")
+
+# 4. Stack them
+combined_thermometer <- bind_rows(before, after) %>%
+
+  # 5. Rename keys and all your thermometer / affect columns
+  rename(
+    condition                   = Condition,
+    qualtrics_subject_id        = Subject,
+    mastodon_username           = UserName,
+    republican_thermometer      = RepThermometer,
+    democrat_thermometer        = DemThermometer,
+    affective_polarisation      = AffPol,
+    republican_negative         = RepNeg,
+    republican_positive         = RepPos,
+    democrat_negative           = DemNeg,
+    democrat_positive           = DemPos,
+    republican_angry            = RepAngry,
+    republican_contempt         = RepContempt,
+    republican_admire           = RepAdmire,
+    republican_fear             = RepFear,
+    republican_enthusiastic     = RepEnthusiastic,
+    republican_pride            = RepPride,
+    democrat_angry              = DemAngry,
+    democrat_contempt           = DemContempt,
+    democrat_admire             = DemAdmire,
+    democrat_fear               = DemFear,
+    democrat_enthusiastic       = DemEnthusiastic,
+    democrat_pride              = DemPride,
+  ) %>%
+  # normalize the condition column
+  mutate(condition = tolower(condition)) %>%
+
+  # 6. Join in your participant metadata
+  left_join(
+    combined_global %>%
+      select(
+        condition,
+        qualtrics_subject_id,
+        mastodon_username,
+        mastodon_account_id,
+        mastodon_display_name,
+        is_confederate,
+        prolific_participant_id,
+        age,
+        sex,
+        gender,
+        political_id_numetric,
+        political_id
+      ),
+    by = c("condition", "qualtrics_subject_id", "mastodon_username")
+  ) %>%
+
+  # 7. Reorder exactly as requested
+  select(
+    condition, 
+    mastodon_account_id, 
+    mastodon_username,
+    mastodon_display_name,
+    is_confederate,
+    qualtrics_subject_id,
+    prolific_participant_id,
+    age,
+    sex,
+    gender,
+    political_id_numetric,
+    political_id,
+    time_point,
+    republican_thermometer,
+    democrat_thermometer,
+    affective_polarisation,
+    republican_negative,
+    republican_positive,
+    democrat_negative,
+    democrat_positive,
+    republican_angry,
+    republican_contempt,
+    republican_admire,
+    republican_fear,
+    republican_enthusiastic,
+    republican_pride,
+    democrat_angry,
+    democrat_contempt,
+    democrat_admire,
+    democrat_fear,
+    democrat_enthusiastic,
+    democrat_pride
+  )
+
+# 8. Write out the combined result
+combined_thermometer_file <- here(
+  processed_magpie_dir,
+  "combined",
+  "combined_thermometer.csv"
+)
+
+combined_thermometer %>%
+  save_processed_file(file = combined_thermometer_file)
+
+```

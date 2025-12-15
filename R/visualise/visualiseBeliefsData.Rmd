@@ -1,0 +1,1124 @@
+---
+title: "Magpie Belief Figures"
+output: html_document
+---
+
+# Belief information: Magpie
+
+This contains a bunch of figures and statistics about the beliefs (both prior and posterior) for the Magpie run from August 2024. We start by loading the data and doing some basic cleaning.
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+rm(list=ls())
+
+# load the packages
+library(here)
+library(tidyverse)
+library(ggdist)
+library(ggridges)
+library(Polychrome)
+library(corrr)
+source(here("R/visualise/supplementaryFunctions.R"))
+
+# Define subfolders
+processed_files_mastodon_dir <- "data/mastodon/files/processed"
+figures_files_mastodon_dir <- "data/mastodon/files/figures"
+all_char_cols <- cols(.default = "c")
+DRY_RUN <- FALSE
+```
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+# set the colours
+polarityColours <- c("left"="#3399CC","na"="#9999FF","right"="#CC0066")
+politicalIDColours <- c("democrat"="#3399CC","independent"="#9999FF",
+                     "republican"="#CC0066")
+
+topicColours <- c("Trans"="#AA3399","Gender"="#FF99FF",
+                  "Climate"="#00AA66","Environment"="#88EE22",
+                  "AI"="#0066CC","SciTech"="#99CCFF",
+                  "Israel"="#CC9900","Foreign"="#FFCC33",
+                  "MoneyEcon" = "#555555", "CrimeGuns"="#888888",
+                  "Religion" = "#AAAAAA", "Health"="#CCCCCC",
+                  "Fun"="#9999FF","Total"="#CC0000")
+
+#conditionColours <- c("Control"="#44AA44","Right"="#660066")
+
+conditionColours <- c("Left"="#99CCFF",
+                      "Control"="#339933","Right"="#FF99CC")
+```
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+# read all of the long files
+# Consistent file paths and loading
+dcbl <- read_csv(here(processed_files_mastodon_dir, "control", "data_priors_long.csv"),
+                 col_types = all_char_cols)
+dcal <- read_csv(here(processed_files_mastodon_dir, "control", "data_posteriors_long.csv"),
+                 col_types = all_char_cols)
+drbl <- read_csv(here(processed_files_mastodon_dir, "right", "data_priors_long.csv"),
+                 col_types = all_char_cols)
+dral <- read_csv(here(processed_files_mastodon_dir, "right", "data_posteriors_long.csv"),
+                 col_types = all_char_cols)
+dlbl <- read_csv(here(processed_files_mastodon_dir, "left", "data_priors_long.csv"),
+                 col_types = all_char_cols)
+dlal <- read_csv(here(processed_files_mastodon_dir, "left", "data_posteriors_long.csv"),
+                 col_types = all_char_cols)
+
+# remove the people who did not complete the After survey
+# save them in a file in case need to look at later
+dc_first <- dcbl[!(dcbl$Subject %in% dcal$Subject),]
+dr_first <- drbl[!(drbl$Subject %in% dral$Subject),]
+dl_first <- dlbl[!(dlbl$Subject %in% dlal$Subject),]
+da_first <- rbind(dc_first,dr_first,dl_first)
+# save combined file
+beliefs_long_first_file <- here(processed_files_mastodon_dir, "combined", 
+                          "firstonly", "beliefs_long.csv")
+da_first %>% save_processed_file(file = beliefs_long_first_file)
+
+
+dc_before <- dcbl[dcbl$Subject %in% dcal$Subject,]
+dc_after <- dcal[dcal$Subject %in% dcbl$Subject,]
+dr_before <- drbl[drbl$Subject %in% dral$Subject,]
+dr_after <- dral[dral$Subject %in% drbl$Subject,]
+dl_before <- dlbl[dlbl$Subject %in% dlal$Subject,]
+dl_after <- dlal[dlal$Subject %in% dlbl$Subject,]
+dl <- rbind(dc_before,dc_after,dr_before,dr_after,dl_before,dl_after)
+
+# save combined file
+beliefs_long_file <- here(processed_files_mastodon_dir, "combined", "beliefs_long.csv")
+dl %>% save_processed_file(file = beliefs_long_file)
+```
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+# read all of the summary files
+dcsb <- read_csv(here(processed_files_mastodon_dir, "control", "data_summary_priors.csv"),
+                 col_types = all_char_cols)
+dcsa <- read_csv(here(processed_files_mastodon_dir, "control", "data_summary_posteriors.csv"),
+                 col_types = all_char_cols)
+drsb <- read_csv(here(processed_files_mastodon_dir, "right", "data_summary_priors.csv"),
+                 col_types = all_char_cols)
+drsa <- read_csv(here(processed_files_mastodon_dir, "right", "data_summary_posteriors.csv"),
+                 col_types = all_char_cols)
+dlsb <- read_csv(here(processed_files_mastodon_dir, "left", "data_summary_priors.csv"),
+                 col_types = all_char_cols)
+dlsa <- read_csv(here(processed_files_mastodon_dir, "left", "data_summary_posteriors.csv"),
+                 col_types = all_char_cols)
+
+# remove the people who did not complete the After survey
+# save them in a file in case need to look at later
+dc_first <- dcsb[!(dcsb$Subject %in% dcsa$Subject),]
+dr_first <- drsb[!(drsb$Subject %in% drsa$Subject),]
+dl_first <- dlsb[!(dlsb$Subject %in% dlsa$Subject),]
+ds_first <- rbind(dc_first,dr_first,dl_first)
+
+# save combined file
+beliefs_summary_first_file <- here(processed_files_mastodon_dir, "combined", 
+                                   "firstonly", "belief_summary.csv")
+ds_first %>% save_processed_file(file = beliefs_long_file)
+
+
+dc_before <- dcsb[dcsb$Subject %in% dcsa$Subject,]
+dc_after <- dcsa[dcsa$Subject %in% dcsb$Subject,]
+dr_before <- drsb[drsb$Subject %in% drsa$Subject,]
+dr_after <- drsa[drsa$Subject %in% drsb$Subject,]
+dl_before <- dlsb[dlsb$Subject %in% dlsa$Subject,]
+dl_after <- dlsa[dlsa$Subject %in% dlsb$Subject,]
+ds <- rbind(dc_before,dc_after,dr_before,dr_after,dl_before,dl_after)
+
+# save combined file
+beliefs_summary_file <- here(processed_files_mastodon_dir, "combined", "belief_summary.csv")
+ds %>% save_processed_file(file = beliefs_summary_file)
+```
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+# set factor levels to be nice
+dl$Condition <- factor(dl$Condition, levels=c("Left","Control","Right"))
+dl$TimePoint <- factor(dl$TimePoint, levels=c("Before","After"))
+dl$Polarity <- factor(dl$Polarity, levels=c("left","na","right"))
+dl$Topic <- factor(dl$Topic, 
+                   levels=c("Trans","Gender","Climate","Environment",
+                            "AI","SciTech","Israel","Foreign",
+                            "CrimeGuns","Health","MoneyEcon",
+                            "Religion","Fun","Total"))
+dl <- dl %>%
+  mutate(across(
+    .cols = matches("Belief"),
+    .fns = as.numeric
+  ))
+
+ds$Condition <- factor(ds$Condition, levels=c("Left","Control","Right"))
+ds$TimePoint <- factor(ds$TimePoint, levels=c("Before","After"))
+ds$Topic <- factor(ds$Topic, 
+                   levels=c("Trans","Gender","Climate","Environment",
+                            "AI","SciTech","Israel","Foreign",
+                            "CrimeGuns","Health","MoneyEcon",
+                            "Religion","Fun","Total"))
+
+ds <- ds %>%
+  mutate(across(
+    .cols = matches("Belief"),
+    .fns = as.numeric
+  ))
+
+# remove extra things to keep space tidy
+rm(dcal,dcbl,dcsb,dcsa,dc_after,dc_before,dc_first,
+   dral,drbl,drsb,drsa,dr_after,dr_before,dr_first,
+   dlal,dlbl,dlsb,dlsa,dl_after,dl_before,dl_first)
+
+nControl <- length(unique(ds$Subject[ds$Condition=="Control"]))
+nRight <- length(unique(ds$Subject[ds$Condition=="Right"]))
+nLeft <- length(unique(ds$Subject[ds$Condition=="Left"]))
+
+set.seed(935234)
+myPalLong <- createPalette(nControl+nRight+nLeft+12, 
+                           c("#FF0000", "#00FF00", "#0000FF"), 
+                           range = c(20, 90))
+names(myPalLong) <- NULL
+myPalCond <- myPalLong
+myPalCond[1:3] <- conditionColours
+myPalTopic <- myPalLong
+myPalTopic[1:5] <- c("#AA3399","#00AA66","#0066CC","#CC9900","#CC0000")
+
+```
+
+There were `r nControl` in the final sample in the **Control** condition. 
+
+There were `r nRight` in the final sample in the **Right** condition.
+
+There were `r nLeft` in the final sample in the **Left** condition.
+
+All analyses are only on the final sample of `r length(unique(ds$Subject))` unless otherwise stated.
+
+## Belief analysis
+
+### Raw belief ratings
+
+For each statement we show the mean and distribution of ratings. They are coded so that the lower they are, the more left leaning they are; thus, ratings close to 0 indicate extreme left and close to 100 indicate extreme right. 50 is neutral. Each row is one of the statements. Those from similar topics have the same colour.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=8}
+beliefMeans <- dl %>%
+    group_by(Condition,ShortText,Topic,TimePoint,Order) %>%
+    summarise(muAll = mean(Belief,na.rm=TRUE),
+              sdAll = sd(Belief,na.rm=TRUE),
+              n = n(),
+              sderrAll = sdAll/sqrt(n))  %>%
+    ungroup()
+
+statementLevels <- levels(reorder(beliefMeans$ShortText,
+                                 beliefMeans$Order))
+
+postLong <- dl %>%
+  left_join(beliefMeans,by=join_by(Condition,ShortText,Topic,TimePoint,Order))
+
+postLong <- postLong %>% 
+  mutate(ShortText = factor(ShortText, levels = statementLevels))
+beliefMeans <- beliefMeans %>%
+  mutate(ShortText = factor(ShortText, levels = statementLevels))
+
+pC <- beliefMeans %>%
+  filter(Condition=="Control") %>%
+  ggplot(mapping=aes(x=ShortText,y=muAll,fill=Topic)) +
+  geom_jitter(data=postLong,mapping=aes(y=Belief,x=ShortText,colour=Topic),
+              alpha=0.6,show.legend=FALSE,width=0.2,height=0.05) +
+  geom_col(colour="black",position="dodge",
+           show.legend=FALSE,alpha=0.35) +
+  geom_errorbar(mapping=aes(ymin = muAll-sderrAll,
+                            ymax=muAll+sderrAll),width=0.2) +
+  theme_bw() +
+  coord_flip() +  
+  scale_x_discrete(limits = rev) +
+  facet_wrap(~TimePoint,ncol=2) +
+  geom_hline(yintercept=50,colour="black",linewidth=0.3,linetype="dashed") +
+    scale_fill_manual(values=topicColours) +
+    scale_colour_manual(values=topicColours) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Belief ratings: Control condition",
+       subtitle = "Lower rating = more to the left") +
+  theme(axis.text.x = element_text(size=10, hjust=0.5),
+        axis.text.y = element_text(size=10),
+        axis.title.x = element_blank(),axis.title.y = element_blank())
+  
+pC
+
+statement_bars_control_file <- here(figures_files_mastodon_dir, "statement_bars_control.png")
+ggsave(filename = statement_bars_control_file,
+       plot=pC,device="png",
+       width=30,height=22, units="cm")
+
+pT <- beliefMeans %>%
+  filter(Condition=="Right") %>%
+  ggplot(mapping=aes(x=ShortText,y=muAll,fill=Topic)) +
+  geom_jitter(data=postLong,mapping=aes(y=Belief,x=ShortText,colour=Topic),
+              alpha=0.6,show.legend=FALSE,width=0.2,height=0.05) +
+  geom_col(colour="black",position="dodge",
+           show.legend=FALSE,alpha=0.35) +
+  geom_errorbar(mapping=aes(ymin = muAll-sderrAll,
+                            ymax=muAll+sderrAll),width=0.2) +
+  theme_bw() +
+  coord_flip() +  
+  scale_x_discrete(limits = rev) +
+  facet_wrap(~TimePoint,ncol=2) +
+  geom_hline(yintercept=50,colour="black",linewidth=0.3,linetype="dashed") +
+    scale_fill_manual(values=topicColours) +
+    scale_colour_manual(values=topicColours) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Belief ratings: Right condition",
+       subtitle = "Lower rating = more to the left") +
+  theme(axis.text.x = element_text(size=10, hjust=0.5),
+        axis.text.y = element_text(size=10),
+        axis.title.x = element_blank(),axis.title.y = element_blank())
+  
+pT
+
+statement_bars_right_file <- here(figures_files_mastodon_dir, "statement_bars_right.png")
+ggsave(filename = statement_bars_right_file,
+       plot=pT,device="png",
+       width=30,height=22, units="cm")
+
+pT <- beliefMeans %>%
+  filter(Condition=="Left") %>%
+  ggplot(mapping=aes(x=ShortText,y=muAll,fill=Topic)) +
+  geom_jitter(data=postLong,mapping=aes(y=Belief,x=ShortText,colour=Topic),
+              alpha=0.6,show.legend=FALSE,width=0.2,height=0.05) +
+  geom_col(colour="black",position="dodge",
+           show.legend=FALSE,alpha=0.35) +
+  geom_errorbar(mapping=aes(ymin = muAll-sderrAll,
+                            ymax=muAll+sderrAll),width=0.2) +
+  theme_bw() +
+  coord_flip() +  
+  scale_x_discrete(limits = rev) +
+  facet_wrap(~TimePoint,ncol=2) +
+  geom_hline(yintercept=50,colour="black",linewidth=0.3,linetype="dashed") +
+    scale_fill_manual(values=topicColours) +
+    scale_colour_manual(values=topicColours) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Belief ratings: Left condition",
+       subtitle = "Lower rating = more to the left") +
+  theme(axis.text.x = element_text(size=10, hjust=0.5),
+        axis.text.y = element_text(size=10),
+        axis.title.x = element_blank(),axis.title.y = element_blank())
+  
+pT
+
+statement_bars_left_file <- here(figures_files_mastodon_dir, "statement_bars_left.png")
+ggsave(filename = statement_bars_left_file,
+       plot=pT,device="png",
+       width=30,height=22, units="cm")
+```
+
+
+### Change in raw beliefs
+
+What's being plotted is the difference between posterior and prior beliefs. If positive this indicates that they are moving rightward, and if negative this indicates they are moving leftward. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=8}
+dl_change <- dl %>%
+  select(Subject,Condition,TimePoint,Topic,ShortText,Belief,Order) %>%
+  pivot_wider(names_from=TimePoint,values_from=Belief) %>%
+  mutate(BeliefChange = as.numeric(After)-as.numeric(Before))
+dl_change$Condition <- factor(dl_change$Condition, levels=c("Left","Control","Right"))
+
+beliefMeans <- dl_change %>%
+    group_by(Condition,ShortText,Topic,Order) %>%
+    summarise(muAll = mean(BeliefChange,na.rm=TRUE),
+              sdAll = sd(BeliefChange,na.rm=TRUE),
+              n = n(),
+              sderrAll = sdAll/sqrt(n))  %>%
+    ungroup()
+
+statementLevels <- levels(reorder(beliefMeans$ShortText,
+                                 beliefMeans$Order))
+
+postLong <- dl_change %>%
+  left_join(beliefMeans,by=join_by(Condition,ShortText,Topic,Order))
+
+postLong <- postLong %>% 
+  mutate(ShortText = factor(ShortText, levels = statementLevels))
+beliefMeans <- beliefMeans %>%
+  mutate(ShortText = factor(ShortText, levels = statementLevels))
+
+p <- beliefMeans %>%
+  ggplot(mapping=aes(x=ShortText,y=muAll,fill=Topic)) +
+  geom_jitter(data=postLong,mapping=aes(y=BeliefChange,x=ShortText,colour=Topic),
+              alpha=0.6,show.legend=FALSE,width=0.2,height=0.05) +
+  geom_col(colour="black",position="dodge",
+           show.legend=FALSE,alpha=0.35) +
+  geom_errorbar(mapping=aes(ymin = muAll-sderrAll,
+                            ymax=muAll+sderrAll),width=0.2) +
+  theme_bw() +
+  coord_flip() +  
+  scale_x_discrete(limits = rev) +
+  facet_wrap(~Condition,ncol=3) +
+    scale_fill_manual(values=topicColours) +
+    scale_colour_manual(values=topicColours) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Belief change from Before to After",
+       subtitle = "Negative indicates a shift to the left") +
+  theme(axis.text.x = element_text(size=10, hjust=0.5),
+        axis.text.y = element_text(size=10),
+        axis.title.x = element_blank(),axis.title.y = element_blank())
+  
+p
+
+statement_bars_change_file <- here(figures_files_mastodon_dir, "statement_bars_change.png")
+ggsave(filename = statement_bars_change_file,
+       plot=p,device="png",
+       width=35,height=22, units="cm")
+```
+
+### Change in beliefs by topic
+
+This is the same as above, but collapsed across topic rather than based on individual statements. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=5}
+ds <- ds %>%
+  mutate(Order = case_when(Topic=="Trans"~1, Topic=="Gender"~2,
+                           Topic=="Climate"~3, Topic=="Environment"~4,
+                           Topic=="AI"~5,Topic=="SciTech"~6,
+                           Topic=="Israel"~7,Topic=="Foreign"~8,
+                           Topic=="MoneyEcon"~9,Topic=="CrimeGuns"~10,
+                           Topic=="Religion"~11,Topic=="Health"~12,
+                           Topic=="Total"~13))
+
+dl_change <- ds %>%
+  select(Subject,Condition,TimePoint,Topic,mnBelief,Order) %>%
+  pivot_wider(names_from=TimePoint,values_from=mnBelief) %>%
+  mutate(BeliefChange = as.numeric(After)-as.numeric(Before))
+dl_change$Condition <- factor(dl_change$Condition, levels=c("Left","Control","Right"))
+
+beliefMeans <- dl_change %>%
+    filter(Topic!="Fun") %>%
+    group_by(Condition,Topic,Order) %>%
+    summarise(muAll = mean(BeliefChange,na.rm=TRUE),
+              sdAll = sd(BeliefChange,na.rm=TRUE),
+              n = n(),
+              sderrAll = sdAll/sqrt(n))  %>%
+    ungroup()
+
+statementLevels <- levels(reorder(beliefMeans$Topic,
+                                 beliefMeans$Order))
+
+postLong <- dl_change %>%
+  left_join(beliefMeans,by=join_by(Condition,Topic,Order))
+
+postLong <- postLong %>% 
+  mutate(ShortText = factor(Topic, levels = statementLevels))
+beliefMeans <- beliefMeans %>%
+  mutate(ShortText = factor(Topic, levels = statementLevels))
+
+p <- beliefMeans %>%
+  ggplot(mapping=aes(x=Topic,y=muAll,fill=Topic)) +
+  geom_jitter(data=postLong,mapping=aes(y=BeliefChange,x=ShortText,colour=Topic),
+              alpha=0.6,show.legend=FALSE,width=0.2,height=0.05) +
+  geom_col(colour="black",position="dodge",
+           show.legend=FALSE,alpha=0.35) +
+  geom_errorbar(mapping=aes(ymin = muAll-sderrAll,
+                            ymax=muAll+sderrAll),width=0.2) +
+  theme_bw() +
+  coord_flip() +  
+  scale_x_discrete(limits = rev) +
+  ylim(-50,50) +
+  facet_wrap(~Condition,ncol=3) +
+    scale_fill_manual(values=topicColours) +
+    scale_colour_manual(values=topicColours) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Belief change from Before to After",
+       subtitle = "Negative indicates a shift to the left") +
+  theme(axis.text.x = element_text(size=10, hjust=0.5),
+        axis.text.y = element_text(size=10),
+        axis.title.x = element_blank(),axis.title.y = element_blank())
+  
+p
+
+topic_bars_change_file <- here(figures_files_mastodon_dir, "topic_bars_change.png")
+ggsave(filename = topic_bars_change_file,
+       plot=p,device="png",
+       width=35,height=12, units="cm")
+
+```
+
+We'll do the same thing but just look at the four key topics.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4}
+dl_change <- ds %>%
+  select(Subject,Condition,TimePoint,Topic,mnBelief,Order) %>%
+  pivot_wider(names_from=TimePoint,values_from=mnBelief) %>%
+  mutate(BeliefChange = as.numeric(After)-as.numeric(Before))
+dl_change$Condition <- factor(dl_change$Condition, levels=c("Left","Control","Right"))
+
+beliefMeans <- dl_change %>%
+    filter(Topic=="Trans" | Topic=="Climate" | Topic=="AI" |
+             Topic=="Israel" | Topic=="Total") %>%
+    group_by(Condition,Topic,Order) %>%
+    summarise(muAll = mean(BeliefChange,na.rm=TRUE),
+              sdAll = sd(BeliefChange,na.rm=TRUE),
+              n = n(),
+              sderrAll = sdAll/sqrt(n))  %>%
+    ungroup()
+
+statementLevels <- levels(reorder(beliefMeans$Topic,
+                                 beliefMeans$Order))
+
+postLong <- dl_change %>%
+      filter(Topic=="Trans" | Topic=="Climate" | Topic=="AI" |
+             Topic=="Israel" | Topic=="Total") %>%
+  left_join(beliefMeans,by=join_by(Condition,Topic,Order))
+
+postLong <- postLong %>% 
+  mutate(ShortText = factor(Topic, levels = statementLevels))
+beliefMeans <- beliefMeans %>%
+  mutate(ShortText = factor(Topic, levels = statementLevels))
+
+p <- beliefMeans %>%
+  ggplot(mapping=aes(x=Topic,y=muAll,fill=Topic)) +
+  geom_jitter(data=postLong,mapping=aes(y=BeliefChange,x=ShortText,colour=Topic),
+              alpha=0.6,show.legend=FALSE,width=0.2,height=0.05) +
+  geom_col(colour="black",position="dodge",
+           show.legend=FALSE,alpha=0.35) +
+  geom_errorbar(mapping=aes(ymin = muAll-sderrAll,
+                            ymax=muAll+sderrAll),width=0.2) +
+  theme_bw() +
+  coord_flip() +  
+  scale_x_discrete(limits = rev) +
+  ylim(-50,50) +
+  facet_wrap(~Condition,ncol=3) +
+    scale_fill_manual(values=topicColours) +
+    scale_colour_manual(values=topicColours) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Belief change from Before to After",
+       subtitle = "Negative indicates a shift to the left") +
+  theme(axis.text.x = element_text(size=10, hjust=0.5),
+        axis.text.y = element_text(size=10),
+        axis.title.x = element_blank(),axis.title.y = element_blank())
+  
+p
+
+topic_key_bars_change_file <- here(figures_files_mastodon_dir, "topic_key_bars_change.png")
+ggsave(filename = topic_key_bars_change_file,
+       plot=p,device="png",
+       width=30,height=8, units="cm")
+
+```
+
+### Extremeness belief ratings
+
+For each statement we show the mean and distribution of ratings. They are coded so that the lower they are, the more central they are. Thus a rating of 0 indicates that they selected 50 (i.e., exactly neutral). A rating of 20 could be either 30 or 70 (it is 20 away from neutral). The most extreme belief rating possible is 50 (corresponding to selecting 0 or 100).
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=8}
+beliefMeans <- dl %>%
+    group_by(Condition,ShortText,Topic,TimePoint,Order) %>%
+    summarise(muAll = mean(ExtremeBelief,na.rm=TRUE),
+              sdAll = sd(ExtremeBelief,na.rm=TRUE),
+              n = n(),
+              sderrAll = sdAll/sqrt(n))  %>%
+    ungroup()
+
+statementLevels <- levels(reorder(beliefMeans$ShortText,
+                                 beliefMeans$Order))
+
+postLong <- dl %>%
+  left_join(beliefMeans,by=join_by(Condition,ShortText,Topic,TimePoint,Order))
+
+postLong <- postLong %>% 
+  mutate(ShortText = factor(ShortText, levels = statementLevels))
+beliefMeans <- beliefMeans %>%
+  mutate(ShortText = factor(ShortText, levels = statementLevels))
+
+pC <- beliefMeans %>%
+  filter(Condition=="Control") %>%
+  ggplot(mapping=aes(x=ShortText,y=muAll,fill=Topic)) +
+  geom_jitter(data=postLong,mapping=aes(y=ExtremeBelief,
+                                        x=ShortText,colour=Topic),
+              alpha=0.6,show.legend=FALSE,width=0.2,height=0.05) +
+  geom_col(colour="black",position="dodge",
+           show.legend=FALSE,alpha=0.35) +
+  geom_errorbar(mapping=aes(ymin = muAll-sderrAll,
+                            ymax=muAll+sderrAll),width=0.2) +
+  theme_bw() +
+  coord_flip() +  
+  scale_x_discrete(limits = rev) +
+  facet_wrap(~TimePoint,ncol=2) +
+    scale_fill_manual(values=topicColours) +
+    scale_colour_manual(values=topicColours) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Belief ratings: Control condition",
+       subtitle = "Lower rating = more to the left") +
+  theme(axis.text.x = element_text(size=10, hjust=0.5),
+        axis.text.y = element_text(size=10),
+        axis.title.x = element_blank(),axis.title.y = element_blank())
+  
+pC
+
+statement_extreme_bars_control_file <- here(figures_files_mastodon_dir, "statement_extreme_bars_control.png")
+ggsave(filename = statement_extreme_bars_control_file,
+       plot=pC,device="png",
+       width=30,height=22, units="cm")
+
+pT <- beliefMeans %>%
+  filter(Condition=="Right") %>%
+  ggplot(mapping=aes(x=ShortText,y=muAll,fill=Topic)) +
+  geom_jitter(data=postLong,mapping=aes(y=ExtremeBelief,
+                                        x=ShortText,colour=Topic),
+              alpha=0.6,show.legend=FALSE,width=0.2,height=0.05) +
+  geom_col(colour="black",position="dodge",
+           show.legend=FALSE,alpha=0.35) +
+  geom_errorbar(mapping=aes(ymin = muAll-sderrAll,
+                            ymax=muAll+sderrAll),width=0.2) +
+  theme_bw() +
+  coord_flip() +  
+  scale_x_discrete(limits = rev) +
+  facet_wrap(~TimePoint,ncol=2) +
+    scale_fill_manual(values=topicColours) +
+    scale_colour_manual(values=topicColours) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Belief ratings: Right condition",
+       subtitle = "Lower indicates being less extreme") +
+  theme(axis.text.x = element_text(size=10, hjust=0.5),
+        axis.text.y = element_text(size=10),
+        axis.title.x = element_blank(),axis.title.y = element_blank())
+  
+pT
+
+statement_extreme_bars_right_file <- here(figures_files_mastodon_dir, "statement_extreme_bars_right.png")
+ggsave(filename = statement_extreme_bars_right_file,
+       plot=pT,device="png",
+       width=30,height=22, units="cm")
+
+pT <- beliefMeans %>%
+  filter(Condition=="Left") %>%
+  ggplot(mapping=aes(x=ShortText,y=muAll,fill=Topic)) +
+  geom_jitter(data=postLong,mapping=aes(y=ExtremeBelief,
+                                        x=ShortText,colour=Topic),
+              alpha=0.6,show.legend=FALSE,width=0.2,height=0.05) +
+  geom_col(colour="black",position="dodge",
+           show.legend=FALSE,alpha=0.35) +
+  geom_errorbar(mapping=aes(ymin = muAll-sderrAll,
+                            ymax=muAll+sderrAll),width=0.2) +
+  theme_bw() +
+  coord_flip() +  
+  scale_x_discrete(limits = rev) +
+  facet_wrap(~TimePoint,ncol=2) +
+    scale_fill_manual(values=topicColours) +
+    scale_colour_manual(values=topicColours) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Belief ratings: Left condition",
+       subtitle = "Lower indicates being less extreme") +
+  theme(axis.text.x = element_text(size=10, hjust=0.5),
+        axis.text.y = element_text(size=10),
+        axis.title.x = element_blank(),axis.title.y = element_blank())
+  
+pT
+
+statement_extreme_bars_left_file <- here(figures_files_mastodon_dir, "statement_extreme_bars_left.png")
+ggsave(filename = statement_extreme_bars_left_file,
+       plot=pT,device="png",
+       width=30,height=22, units="cm")
+```
+
+
+### Change in extremeness of beliefs
+
+What's being plotted is the difference between the extremeness of beliefs from before to after. If positive this indicates they are becoming more extreme; if negative it indicates they are becoming less extreme. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=8}
+dl_change <- dl %>%
+  select(Subject,Condition,TimePoint,Topic,ShortText,ExtremeBelief,Order) %>%
+  pivot_wider(names_from=TimePoint,values_from=ExtremeBelief) %>%
+  mutate(BeliefChange = as.numeric(After)-as.numeric(Before))
+dl_change$Condition <- factor(dl_change$Condition, levels=c("Left","Control","Right"))
+
+beliefMeans <- dl_change %>%
+    group_by(Condition,ShortText,Topic,Order) %>%
+    summarise(muAll = mean(BeliefChange,na.rm=TRUE),
+              sdAll = sd(BeliefChange,na.rm=TRUE),
+              n = n(),
+              sderrAll = sdAll/sqrt(n))  %>%
+    ungroup()
+
+statementLevels <- levels(reorder(beliefMeans$ShortText,
+                                 beliefMeans$Order))
+
+postLong <- dl_change %>%
+  left_join(beliefMeans,by=join_by(Condition,ShortText,Topic,Order))
+
+postLong <- postLong %>% 
+  mutate(ShortText = factor(ShortText, levels = statementLevels))
+beliefMeans <- beliefMeans %>%
+  mutate(ShortText = factor(ShortText, levels = statementLevels))
+
+p <- beliefMeans %>%
+  ggplot(mapping=aes(x=ShortText,y=muAll,fill=Topic)) +
+  geom_jitter(data=postLong,mapping=aes(y=BeliefChange,
+                                        x=ShortText,colour=Topic),
+              alpha=0.6,show.legend=FALSE,width=0.2,height=0.05) +
+  geom_col(colour="black",position="dodge",
+           show.legend=FALSE,alpha=0.35) +
+  geom_errorbar(mapping=aes(ymin = muAll-sderrAll,
+                            ymax=muAll+sderrAll),width=0.2) +
+  theme_bw() +
+  coord_flip() +  
+  scale_x_discrete(limits = rev) +
+  facet_wrap(~Condition,ncol=3) +
+    scale_fill_manual(values=topicColours) +
+    scale_colour_manual(values=topicColours) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Extremeness of belief change from Before to After",
+       subtitle = "Negative indicates becoming less extreme") +
+  theme(axis.text.x = element_text(size=10, hjust=0.5),
+        axis.text.y = element_text(size=10),
+        axis.title.x = element_blank(),axis.title.y = element_blank())
+p
+
+statement_extreme_bars_change_file <- here(figures_files_mastodon_dir, "statement_extreme_bars_change.png")
+ggsave(filename = statement_extreme_bars_change_file,
+       plot=p,device="png",
+       width=30,height=22, units="cm")
+```
+
+### Change in extremeness of beliefs by topic
+
+This is the same as above, but collapsed across topic rather than based on individual statements. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=5}
+dl_change <- ds %>%
+  select(Subject,Condition,TimePoint,Topic,mnExtremeBelief,Order) %>%
+  pivot_wider(names_from=TimePoint,values_from=mnExtremeBelief) %>%
+  mutate(BeliefChange = as.numeric(After)-as.numeric(Before))
+dl_change$Condition <- factor(dl_change$Condition, levels=c("Left","Control","Right"))
+
+beliefMeans <- dl_change %>%
+    filter(Topic!="Fun") %>%
+    group_by(Condition,Topic,Order) %>%
+    summarise(muAll = mean(BeliefChange,na.rm=TRUE),
+              sdAll = sd(BeliefChange,na.rm=TRUE),
+              n = n(),
+              sderrAll = sdAll/sqrt(n))  %>%
+    ungroup()
+
+statementLevels <- levels(reorder(beliefMeans$Topic,
+                                 beliefMeans$Order))
+
+postLong <- dl_change %>%
+  left_join(beliefMeans,by=join_by(Condition,Topic,Order))
+
+postLong <- postLong %>% 
+  mutate(ShortText = factor(Topic, levels = statementLevels))
+beliefMeans <- beliefMeans %>%
+  mutate(ShortText = factor(Topic, levels = statementLevels))
+
+p <- beliefMeans %>%
+  ggplot(mapping=aes(x=Topic,y=muAll,fill=Topic)) +
+  geom_jitter(data=postLong,mapping=aes(y=BeliefChange,
+                                        x=ShortText,colour=Topic),
+              alpha=0.6,show.legend=FALSE,width=0.2,height=0.05) +
+  geom_col(colour="black",position="dodge",
+           show.legend=FALSE,alpha=0.35) +
+  geom_errorbar(mapping=aes(ymin = muAll-sderrAll,
+                            ymax=muAll+sderrAll),width=0.2) +
+  theme_bw() +
+  coord_flip() +  
+  scale_x_discrete(limits = rev) +
+  ylim(-50,50) +
+  facet_wrap(~Condition,ncol=3) +
+    scale_fill_manual(values=topicColours) +
+    scale_colour_manual(values=topicColours) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Extremeness of belief change from Before to After",
+       subtitle = "Negative indicates becoming less extreme") +
+  theme(axis.text.x = element_text(size=10, hjust=0.5),
+        axis.text.y = element_text(size=10),
+        axis.title.x = element_blank(),axis.title.y = element_blank())
+  
+p
+
+topic_extreme_bars_change_file <- here(figures_files_mastodon_dir, "topic_extreme_bars_change.png")
+ggsave(filename = topic_extreme_bars_change_file,
+       plot=p,device="png",
+       width=30,height=12, units="cm")
+
+```
+
+We'll do the same thing but just look at the four key topics.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4}
+dl_change <- ds %>%
+  select(Subject,Condition,TimePoint,Topic,mnExtremeBelief,Order) %>%
+  pivot_wider(names_from=TimePoint,values_from=mnExtremeBelief) %>%
+  mutate(BeliefChange = as.numeric(After)-as.numeric(Before))
+dl_change$Condition <- factor(dl_change$Condition, levels=c("Left","Control","Right"))
+
+beliefMeans <- dl_change %>%
+    filter(Topic=="Trans" | Topic=="Climate" | Topic=="AI" |
+             Topic=="Israel" | Topic=="Total") %>%
+    group_by(Condition,Topic,Order) %>%
+    summarise(muAll = mean(BeliefChange,na.rm=TRUE),
+              sdAll = sd(BeliefChange,na.rm=TRUE),
+              n = n(),
+              sderrAll = sdAll/sqrt(n))  %>%
+    ungroup()
+
+statementLevels <- levels(reorder(beliefMeans$Topic,
+                                 beliefMeans$Order))
+
+postLong <- dl_change %>%
+      filter(Topic=="Trans" | Topic=="Climate" | Topic=="AI" |
+             Topic=="Israel" | Topic=="Total") %>%
+  left_join(beliefMeans,by=join_by(Condition,Topic,Order))
+
+postLong <- postLong %>% 
+  mutate(ShortText = factor(Topic, levels = statementLevels))
+beliefMeans <- beliefMeans %>%
+  mutate(ShortText = factor(Topic, levels = statementLevels))
+
+p <- beliefMeans %>%
+  ggplot(mapping=aes(x=Topic,y=muAll,fill=Topic)) +
+  geom_jitter(data=postLong,mapping=aes(y=BeliefChange,
+                                        x=ShortText,colour=Topic),
+              alpha=0.6,show.legend=FALSE,width=0.2,height=0.05) +
+  geom_col(colour="black",position="dodge",
+           show.legend=FALSE,alpha=0.35) +
+  geom_errorbar(mapping=aes(ymin = muAll-sderrAll,
+                            ymax=muAll+sderrAll),width=0.2) +
+  theme_bw() +
+  coord_flip() +  
+  scale_x_discrete(limits = rev) +
+  ylim(-50,50) +
+  facet_wrap(~Condition,ncol=3) +
+    scale_fill_manual(values=topicColours) +
+    scale_colour_manual(values=topicColours) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Extremeness of belief change from Before to After",
+       subtitle = "Negative indicates becoming less extreme") +
+  theme(axis.text.x = element_text(size=10, hjust=0.5),
+        axis.text.y = element_text(size=10),
+        axis.title.x = element_blank(),axis.title.y = element_blank())
+  
+p
+
+topic_key_extreme_bars_change_file <- here(figures_files_mastodon_dir, "topic_key_extreme_bars_change.png")
+ggsave(filename = topic_key_extreme_bars_change_file,
+       plot=p,device="png",
+       width=30,height=8, units="cm")
+
+```
+
+### Correlations between beliefs
+
+Here is a correlation matrix between beliefs for people, so we can see how they are related to each other.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=6}
+beliefMeans <- dl %>%
+    group_by(Condition,ShortText,Topic,TimePoint,Order) %>%
+    summarise(muAll = mean(Belief,na.rm=TRUE),
+              sdAll = sd(Belief,na.rm=TRUE),
+              n = n(),
+              sderrAll = sdAll/sqrt(n))  %>%
+    ungroup()
+
+postLong <- dl %>%
+  left_join(beliefMeans,
+            by=join_by(Condition,ShortText,Topic,TimePoint,Order))
+
+beforeLongC <- postLong %>% 
+  filter(TimePoint=="Before" & Condition=="Control")
+afterLongC <- postLong %>% 
+  filter(TimePoint=="After" & Condition=="Control")
+
+p <- plotCluster(beforeLongC,"Control",colourChoice="Topic",
+                 titleText="Prior belief correlations: ")
+
+p
+
+prior_belief_correlations_topic_control_file <- here(figures_files_mastodon_dir, "prior_belief_correlations_topic_control.png")
+ggsave(filename = prior_belief_correlations_topic_control_file,
+       plot=p,device="png",
+       width=25,height=15, units="cm")
+
+p <- plotCluster(afterLongC,"Control",colourChoice="Topic",
+                 titleText="Posterior belief correlations: ")
+
+p
+
+posterior_belief_correlations_topic_control_file <- here(figures_files_mastodon_dir, "posterior_belief_correlations_topic_control.png")
+ggsave(filename = posterior_belief_correlations_topic_control_file,
+       plot=p,device="png",
+       width=25,height=15, units="cm")
+
+beforeLongT <- postLong %>% 
+  filter(TimePoint=="Before" & Condition=="Right")
+afterLongT <- postLong %>% 
+  filter(TimePoint=="After" & Condition=="Right")
+
+p <- plotCluster(beforeLongT,"Right",colourChoice="Topic",
+                 titleText="Prior belief correlations: ")
+
+p
+
+prior_belief_correlations_topic_right_file <- here(figures_files_mastodon_dir, "prior_belief_correlations_topic_right.png")
+ggsave(filename = prior_belief_correlations_topic_right_file,
+       plot=p,device="png",
+       width=25,height=15, units="cm")
+
+p <- plotCluster(afterLongT,"Right",colourChoice="Topic",
+                 titleText="Posterior belief correlations: ")
+
+p
+
+posterior_belief_correlations_topic_right_file <- here(figures_files_mastodon_dir, "posterior_belief_correlations_topic_right.png")
+ggsave(filename = posterior_belief_correlations_topic_right_file,
+       plot=p,device="png",
+       width=25,height=15, units="cm")
+
+beforeLongT <- postLong %>% 
+  filter(TimePoint=="Before" & Condition=="Left")
+afterLongT <- postLong %>% 
+  filter(TimePoint=="After" & Condition=="Left")
+
+p <- plotCluster(beforeLongT,"Left",colourChoice="Topic",
+                 titleText="Prior belief correlations: ")
+
+p
+
+prior_belief_correlations_topic_left_file <- here(figures_files_mastodon_dir, "prior_belief_correlations_topic_left.png")
+ggsave(filename = prior_belief_correlations_topic_left_file,
+       plot=p,device="png",
+       width=25,height=15, units="cm")
+
+p <- plotCluster(afterLongT,"Left",colourChoice="Topic",
+                 titleText="Posterior belief correlations: ")
+
+p
+
+posterior_belief_correlations_topic_left_file <- here(figures_files_mastodon_dir, "posterior_belief_correlations_topic_left.png")
+ggsave(filename = posterior_belief_correlations_topic_left_file,
+       plot=p,device="png",
+       width=25,height=15, units="cm")
+
+```
+
+
+### Individual beliefs
+
+For each individual, we can calculate a measure of how "extreme" they are. For this we exclude the four "neutral" topics. The others are recoded so that they are given 0 if their belief was 50, -50 if their belief was all the way to the "left" end, and 50 if their belief was all the way to the "right" end. Pscore is just the average of this (further from 0 indicates more extreme).
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4}
+ds$Condition <- factor(ds$Condition, levels=c("Left","Control","Right"))
+ds$TimePoint <- factor(ds$TimePoint, levels=c("Before","After"))
+ds$pScore <- as.numeric(ds$mnBelief)-50
+
+p <- ds %>%
+  filter(Topic=="Total") %>%
+  ggplot(mapping=aes(x = TimePoint, y=pScore, 
+                     fill=Condition)) +
+  stat_halfeye(aes(fill=Condition),adjust = .5, width = .5, .width = c(0.5, 1),
+               show.legend=FALSE, alpha=0.5, justification=-0.25,
+               point_interval = "mean_qi") +
+  geom_jitter(aes(fill=Subject,colour=Subject),alpha = .5, 
+              width=0.05, show.legend=FALSE) +
+  facet_wrap(~Condition,ncol=3) +
+  coord_flip() +  
+  scale_x_discrete(limits = rev, expand=expansion(add=c(0.2,0))) +
+  scale_fill_manual(values=myPalCond) +
+  scale_colour_manual(values=myPalCond) +
+  theme_bw() +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  scale_y_continuous(breaks=c(-50,-25,0,25,50),limits=c(-52,52)) +
+  geom_hline(yintercept=0,colour="black",size=0.3,linetype="dashed") +
+  labs(title = "Belief polarity by condition", 
+       y="Polarity score pScore (higher = more right)",
+       subtitle = "Each dot is one person") +
+  theme(axis.text.y = element_text(angle = 90, hjust=0.3, size=10),
+        axis.title.y = element_blank())
+p
+
+pscore_by_condition_file <- here(figures_files_mastodon_dir, "pscore_by_condition.png")
+ggsave(filename = pscore_by_condition_file,
+       plot=p,device="png",
+       width=15,height=8, units="cm")
+
+```
+
+Same thing but viewed by topic.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4}
+p <- ds %>%
+  filter(Topic=="Trans" | Topic=="AI" | Topic=="Israel" |
+           Topic=="Climate") %>%
+  filter(Condition=="Control") %>%
+  ggplot(mapping=aes(x = TimePoint, y=pScore, 
+                     fill=Topic)) +
+  stat_halfeye(aes(fill=Topic),adjust = .5, width = .5, .width = c(0.5, 1),
+               show.legend=FALSE, alpha=0.5, justification=-0.25,
+               point_interval = "mean_qi") +
+  geom_jitter(aes(fill=Subject,colour=Subject),alpha = .5, 
+              width=0.05, show.legend=FALSE) +
+  coord_flip() +  
+  facet_wrap(~Topic,ncol=4) +
+  scale_x_discrete(limits = rev, expand=expansion(add=c(0.2,0))) +
+  scale_fill_manual(values=myPalTopic) +
+  scale_colour_manual(values=myPalTopic) +
+  theme_bw() +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  scale_y_continuous(breaks=c(-50,-25,0,25,50),limits=c(-52,52)) +
+  geom_hline(yintercept=0,colour="black",size=0.3,linetype="dashed") +
+  labs(title = "Belief polarity by topic: Control condition", 
+       y="Polarity score pScore (higher = more right)",
+       subtitle = "Each dot is one person") +
+  theme(axis.text.y = element_text(angle = 90, hjust=0.3, size=10),
+        axis.title.y = element_blank())
+p
+
+pscore_by_topic_control_file <- here(figures_files_mastodon_dir, "pscore_by_topic_control.png")
+ggsave(filename = pscore_by_topic_control_file,
+       plot=p,device="png",
+       width=15,height=8, units="cm")
+
+p <- ds %>%
+  filter(Topic=="Trans" | Topic=="AI" | Topic=="Israel" |
+           Topic=="Climate") %>%
+  filter(Condition=="Right") %>%
+  ggplot(mapping=aes(x = TimePoint, y=pScore, 
+                     fill=Topic)) +
+  stat_halfeye(aes(fill=Topic),adjust = .5, width = .5, .width = c(0.5, 1),
+               show.legend=FALSE, alpha=0.5, justification=-0.25,
+               point_interval = "mean_qi") +
+  geom_jitter(aes(fill=Subject,colour=Subject),alpha = .5, 
+              width=0.05, show.legend=FALSE) +
+  coord_flip() +  
+  facet_wrap(~Topic,ncol=4) +
+  scale_x_discrete(limits = rev, expand=expansion(add=c(0.2,0))) +
+  scale_fill_manual(values=myPalTopic) +
+  scale_colour_manual(values=myPalTopic) +
+  theme_bw() +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  scale_y_continuous(breaks=c(-50,-25,0,25,50),limits=c(-52,52)) +
+  geom_hline(yintercept=0,colour="black",size=0.3,linetype="dashed") +
+  labs(title = "Belief polarity by topic: Right condition", 
+       y="Polarity score pScore (higher = more right)",
+       subtitle = "Each dot is one person") +
+  theme(axis.text.y = element_text(angle = 90, hjust=0.3, size=10),
+        axis.title.y = element_blank())
+p
+
+pscore_by_topic_right_file <- here(figures_files_mastodon_dir, "pscore_by_topic_right.png")
+ggsave(filename = pscore_by_topic_right_file,
+       plot=p,device="png",
+       width=15,height=8, units="cm")
+
+p <- ds %>%
+  filter(Topic=="Trans" | Topic=="AI" | Topic=="Israel" |
+           Topic=="Climate") %>%
+  filter(Condition=="Left") %>%
+  ggplot(mapping=aes(x = TimePoint, y=pScore, 
+                     fill=Topic)) +
+  stat_halfeye(aes(fill=Topic),adjust = .5, width = .5, .width = c(0.5, 1),
+               show.legend=FALSE, alpha=0.5, justification=-0.25,
+               point_interval = "mean_qi") +
+  geom_jitter(aes(fill=Subject,colour=Subject),alpha = .5, 
+              width=0.05, show.legend=FALSE) +
+  coord_flip() +  
+  facet_wrap(~Topic,ncol=4) +
+  scale_x_discrete(limits = rev, expand=expansion(add=c(0.2,0))) +
+  scale_fill_manual(values=myPalTopic) +
+  scale_colour_manual(values=myPalTopic) +
+  theme_bw() +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  scale_y_continuous(breaks=c(-50,-25,0,25,50),limits=c(-52,52)) +
+  geom_hline(yintercept=0,colour="black",size=0.3,linetype="dashed") +
+  labs(title = "Belief polarity by topic: Left condition", 
+       y="Polarity score pScore (higher = more right)",
+       subtitle = "Each dot is one person") +
+  theme(axis.text.y = element_text(angle = 90, hjust=0.3, size=10),
+        axis.title.y = element_blank())
+p
+
+pscore_by_topic_left_file <- here(figures_files_mastodon_dir, "pscore_by_topic_left.png")
+ggsave(filename = pscore_by_topic_left_file,
+       plot=p,device="png",
+       width=15,height=8, units="cm")
+```
+
+### Individual changes in pScore
+
+We calculate *pScoreDiff* which is abs(afterPScore) - abs(BeforePScore). The larger it is the more people have changed their views in the direction they already were. Smaller indicates that they changed them away from the direction they already were.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4}
+ds_change <- ds %>%
+  select(Subject,Condition,TimePoint,Topic,mnBelief) %>%
+  pivot_wider(names_from=TimePoint,values_from=mnBelief) %>%
+  mutate(BeliefChange = abs( as.numeric(After)-50) - abs(as.numeric(Before)-50))
+
+p <- ds_change %>%
+  filter(Topic=="Total" | Topic=="Trans" | Topic=="Israel" |
+           Topic=="AI" | Topic=="Climate") %>%
+  ggplot(mapping=aes(x = Condition, y=BeliefChange, 
+                     fill=Topic)) +
+  stat_halfeye(aes(fill=Topic),adjust = .5, width = .5, .width = c(0.5, 1),
+               show.legend=FALSE, alpha=0.5, justification=-0.25,
+               point_interval = "mean_qi") +
+  geom_jitter(aes(fill=Subject,colour=Subject),alpha = .5, 
+              width=0.05, show.legend=FALSE) +
+  facet_wrap(~Topic,ncol=5) +
+  coord_flip() +  
+  scale_x_discrete(limits = rev, expand=expansion(add=c(0.2,0))) +
+  scale_fill_manual(values=myPalTopic) +
+  scale_colour_manual(values=myPalTopic) +
+  theme_bw() +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  scale_y_continuous(breaks=c(-25,0,25),limits=c(-27,27)) +
+  geom_hline(yintercept=0,colour="black",size=0.3,linetype="dashed") +
+  labs(title = "pScoreDiff by topic and condition", 
+       y="Positive is a shift in the direction they already were",
+       subtitle = "Each dot is one person") +
+  theme(axis.text.y = element_text(angle = 90, hjust=0.3, size=10),
+        axis.title.y = element_blank())
+p
+
+pscore_diff_by_condition_file <- here(figures_files_mastodon_dir, "pscore_diff_by_condition.png")
+ggsave(filename = pscore_diff_by_condition_file,
+       plot=p,device="png",
+       width=20,height=8, units="cm")
+
+```
+
+
+We calculate *BeliefChange* which is afterPScore - beforePScore. If it is positive that indicates they've shifted rightward.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4}
+ds_change <- ds %>%
+  select(Subject,Condition,TimePoint,Topic,mnBelief) %>%
+  pivot_wider(names_from=TimePoint,values_from=mnBelief) %>%
+  mutate(BeliefChange = as.numeric(After)-as.numeric(Before))
+
+p <- ds_change %>%
+  filter(Topic=="Total" | Topic=="Trans" | Topic=="Israel" |
+           Topic=="AI" | Topic=="Climate") %>%
+  ggplot(mapping=aes(x = Condition, y=BeliefChange, 
+                     fill=Topic)) +
+  stat_halfeye(aes(fill=Topic),adjust = .5, width = .5, .width = c(0.5, 1),
+               show.legend=FALSE, alpha=0.5, justification=-0.25,
+               point_interval = "mean_qi") +
+  geom_jitter(aes(fill=Subject,colour=Subject),alpha = .5, 
+              width=0.05, show.legend=FALSE) +
+  facet_wrap(~Topic,ncol=5) +
+  coord_flip() +  
+  scale_x_discrete(limits = rev, expand=expansion(add=c(0.2,0))) +
+  scale_fill_manual(values=myPalTopic) +
+  scale_colour_manual(values=myPalTopic) +
+  theme_bw() +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  scale_y_continuous(breaks=c(-25,0,25),limits=c(-27,27)) +
+  geom_hline(yintercept=0,colour="black",size=0.3,linetype="dashed") +
+  labs(title = "Change in polarity score by topic and condition", 
+       y="Positive is a shift to more rightward views",
+       subtitle = "Each dot is one person") +
+  theme(axis.text.y = element_text(angle = 90, hjust=0.3, size=10),
+        axis.title.y = element_blank())
+p
+
+pscore_change_by_condition_file <- here(figures_files_mastodon_dir, "pscore_change_by_condition.png")
+ggsave(filename = pscore_change_by_condition_file,
+       plot=p,device="png",
+       width=20,height=8, units="cm")
+
+```
+

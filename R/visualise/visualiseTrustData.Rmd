@@ -1,0 +1,434 @@
+---
+title: "Magpie Trust Figures"
+output: html_document
+---
+
+# Trust information: Magpie
+
+This contains a bunch of figures and statistics about the trust (both before and after) for the Magpie run from August 2024. We start by loading the data and doing some basic cleaning.
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+rm(list=ls())
+
+# load the packages
+library(here)
+library(tidyverse)
+#library(ggdist)
+#library(ggridges)
+library(Polychrome)
+#library(corrr)
+source(here("R/visualise/supplementaryFunctions.R"))
+
+# Define subfolders
+processed_files_mastodon_dir <- "data/mastodon/files/processed"
+raw_files_mastodon_dir <- "data/mastodon/files/raw"
+figures_files_mastodon_dir <- "data/mastodon/files/figures"
+all_char_cols <- cols(.default = "c")
+DRY_RUN <- FALSE
+```
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+
+# set the colours
+polarityColours <- c("left"="#3399CC","na"="#9999FF","right"="#CC0066")
+politicalIDColours <- c("democrat"="#3399CC","independent"="#9999FF",
+                     "republican"="#CC0066")
+partyColours <- c("Democrat"="#3399CC","Republican"="#CC0066")
+
+trustColours <- c("#00AA11","#BB0000")
+
+#conditionColours <- c("Control"="#44AA44","Right"="#660066")
+
+conditionColours <- c("Left"="#99CCFF",
+                      "Control"="#339933","Right"="#FF99CC")
+
+ttColours <- c("#BB0000","#CC9933","#CCCC33","#00AA11")
+
+entityColours <- c("People"="#9966FF","Universities"="#3399FF",
+                "Media"="#66CC33","Government"="#FFFF00",
+                "Business"="#FF9900","Overall"="#AA0000")
+
+emotionColours <- c("Thermometer"="#3399FF",
+                    "Positive"="#66CC33","Admire"="#99FF99",
+                    "Enthusiastic"="#99FF99","Pride"="#99FF99",
+                    "Negative"="#BB0000","Angry"="#FF9999",
+                    "Contempt"="#FF9999","Fear"="#FF9999",
+                    "AffPol"="#9966FF")
+
+
+# read all of the long files
+dcb <- read_csv(here(processed_files_mastodon_dir, "control", "data_before_trust.csv"),
+                col_types = all_char_cols)
+dca <- read_csv(here(processed_files_mastodon_dir, "control", "data_after_trust.csv"),
+                col_types = all_char_cols)
+drb <- read_csv(here(processed_files_mastodon_dir, "right", "data_before_trust.csv"),
+                col_types = all_char_cols)
+dra <- read_csv(here(processed_files_mastodon_dir, "right", "data_after_trust.csv"),
+                col_types = all_char_cols)
+dlb <- read_csv(here(processed_files_mastodon_dir, "left", "data_before_trust.csv"),
+                col_types = all_char_cols)
+dla <- read_csv(here(processed_files_mastodon_dir, "left", "data_after_trust.csv"),
+                col_types = all_char_cols)
+
+# remove the people who did not complete the After survey
+# save them in a file in case need to look at later
+dc_first <- dcb[!(dcb$Subject %in% dca$Subject),]
+dr_first <- drb[!(drb$Subject %in% dra$Subject),]
+dl_first <- dlb[!(dlb$Subject %in% dla$Subject),]
+da_first <- rbind(dc_first,dr_first,dl_first)
+
+trust_first_file <- here(processed_files_mastodon_dir, "combined", 
+                          "firstonly", "trust.csv")
+da_first %>% save_processed_file(file = trust_first_file)
+
+dc_before <- dcb[dcb$Subject %in% dca$Subject,]
+dc_after <- dca[dca$Subject %in% dcb$Subject,]
+dr_before <- drb[drb$Subject %in% dra$Subject,]
+dr_after <- dra[dra$Subject %in% drb$Subject,]
+dl_before <- dlb[dlb$Subject %in% dla$Subject,]
+dl_after <- dla[dla$Subject %in% dlb$Subject,]
+d <- rbind(dc_before,dc_after,dr_before,dr_after,dl_before,dl_after)
+# save combined file
+trust_file <- here(processed_files_mastodon_dir, "combined", "trust.csv")
+d %>% save_processed_file(file = trust_file)
+
+# set factor levels to be nice
+d$Condition <- factor(d$Condition, levels=c("Left","Control","Right"))
+d$TimePoint <- factor(d$TimePoint, levels=c("Before","After"))
+d$WVSTrust <- factor(d$WVSTrust, levels=c("trust","distrust"))
+d$Election2024 <- factor(d$Election2024, 
+                    levels = c("harris","trump","norecall",
+                               "novote","other"))
+
+cols_to_exclude <- c(
+  "Subject",       # ID
+  "UserName",      # ID
+  "Condition",     # already integer
+  "TimePoint",     # already integer
+  "WVSTrust",      # already integer
+  "Election2024"   # already integer
+)
+
+d <- d %>%
+  mutate(across(
+    .cols = -all_of(cols_to_exclude),
+    .fns = as.numeric
+  ))
+
+# remove extra things to keep space tidy
+rm(dca,dcb,dc_after,dc_before,dc_first,
+   dra,drb,dr_after,dr_before,dr_first,
+   dla,dlb,dl_after,dl_before,dl_first)
+
+nControl <- length(unique(d$Subject[d$Condition=="Control"]))
+nRight <- length(unique(d$Subject[d$Condition=="Right"]))
+nLeft <- length(unique(d$Subject[d$Condition=="Left"]))
+
+#set.seed(935234)
+#myPalLong <- createPalette(nControl+nRight+nLeft+12, 
+#                           c("#FF0000", "#00FF00", "#0000FF"), 
+#                           range = c(20, 90))
+#names(myPalLong) <- NULL
+#myPalCond <- myPalLong
+#myPalCond[1:2] <- conditionColours
+#myPalTopic <- myPalLong
+#myPalTopic[1:5] <- c("#AA3399","#00AA66","#0066CC","#CC9900","#CC0000")
+
+```
+
+There were `r nControl` in the final sample in the **Control** condition. 
+
+There were `r nLeft` in the final sample in the **Left** condition.
+
+There were `r nRight` in the final sample in the **Right** condition.
+
+All analyses are only on the final sample of `r length(unique(d$Subject))` unless otherwise stated.
+
+## Trust analysis
+
+### World Values Survey trust
+
+The World Values Survey asks about people's generalised trust. Considering only the answers which were coded as "trust" and "distrust" (i.e., excluding the "don't know" option) we can ask ourselves how those ratings compare across conditions and how they changed.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=8}
+d$TimePoint <- factor(d$TimePoint, levels=c("Before","After"))
+
+trustMeans <- d %>%
+  filter(WVSTrust=="trust" | WVSTrust=="distrust") %>%
+  group_by(Condition,TimePoint,WVSTrust) %>%
+  summarise(n = n()) %>%
+  ungroup()
+
+p <- trustMeans %>%
+  ggplot(mapping=aes(x=TimePoint,y=n,fill=WVSTrust)) +
+  geom_col(position=position_stack(reverse = TRUE),colour="black",
+           show.legend=FALSE) +
+  theme_bw() +
+  facet_wrap(~Condition,ncol=3) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(), axis.ticks.x = element_blank(),
+        axis.title.y = element_blank(), axis.title.x=element_blank()) +
+  scale_fill_manual(values=trustColours) +
+  labs(title = "Explicit trust by condition over time",
+       subtitle = "World Value Survey answers (green=trust, red=distrust)") 
+
+p
+
+wvs_condition_time_file <- here(figures_files_mastodon_dir, "wvs_condition_time.png")
+ggsave(filename = wvs_condition_time_file,
+       plot=p,device="png",
+       width=12,height=8, units="cm")
+```
+
+We can look at how they changed by grouping people as one of four categories: trust-trust (i.e., they said they trusted others both before and after), distrust-distrust (i.e., they said they distrusted others both before and after), trust-distrust (i.e., they went from trusting to distrusting), and distrust-trust (i.e., they went from trusting to distrusting).
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=8}
+t <- d %>%
+  select(Subject,Condition,TimePoint,WVSTrust) %>%
+  filter(WVSTrust=="trust" | WVSTrust=="distrust") %>%
+  mutate(WVSTrust = case_when(WVSTrust=="trust"~"T",TRUE~"D")) %>%
+  pivot_wider(names_from=TimePoint, values_from=WVSTrust) %>%
+  mutate(TrustType = str_c(Before,After))
+
+trustMeans <- t %>%
+  group_by(Condition,TrustType) %>%
+  summarise(n = n()) %>%
+  ungroup()
+
+p <- trustMeans %>%
+  filter(!is.na(TrustType)) %>%
+  ggplot(mapping=aes(x=TrustType,y=n,fill=TrustType)) +
+  geom_col(colour="black",
+           show.legend=FALSE) +
+  theme_bw() +
+  facet_wrap(~Condition,ncol=3) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(), axis.ticks.x = element_blank(),
+        axis.title.y = element_blank(), axis.title.x=element_blank()) +
+  scale_fill_manual(values=ttColours) +
+  labs(title = "Explicit trust change: WVS Answers",
+       subtitle = "DD=distrust both; DT=distrust to trust; TD= trust to distrust; TT=trust both") 
+
+p
+
+wvs_condition_change_file <- here(figures_files_mastodon_dir, "wvs_condition_change.png")
+ggsave(filename = wvs_condition_change_file,
+       plot=p,device="png",
+       width=15,height=8, units="cm")
+```
+
+### Overall trust
+
+We asked people to rate how much they trusted various things (media, etc). Let's look at how that varies by condition and time point. We show each specific question score but also the overall (which is the average of each for each person).
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=5}
+t <- d %>%
+  select(Subject,Condition,TimePoint,TrustOverall,TrustUnis,
+         TrustPeople,TrustMedia,TrustGovt,TrustBusiness) %>%
+  pivot_longer(cols=c(TrustOverall,TrustPeople,TrustMedia,
+                      TrustGovt,TrustBusiness,TrustUnis),
+               names_to="Entity", values_to="TrustRating") %>%
+  mutate(Entity = str_remove(Entity,"Trust")) %>%
+  mutate(Entity = case_when(Entity=="Govt"~"Government",
+                            Entity=="Unis"~"Universities",
+                            TRUE~Entity))
+
+t$Entity <- factor(t$Entity, levels=c("People","Universities",
+                                      "Media","Government",
+                                      "Business","Overall"))
+trustMeans <- t %>%
+  group_by(Condition,TimePoint,Entity) %>%
+  summarise(mean = mean(TrustRating,na.rm=TRUE),
+            sd = sd(TrustRating,na.rm=TRUE),
+            n = n(),
+            sderr = sd/sqrt(n)) %>%
+  ungroup()
+
+p <- trustMeans %>%
+  ggplot(mapping=aes(x=Entity,y=mean,fill=Entity)) +
+  geom_jitter(data=t,mapping=aes(y=TrustRating,x=Entity,
+                                 colour=Entity),
+              alpha=0.75,show.legend=FALSE,width=0.2,height=0.05) +
+  geom_col(colour="black",position="dodge",
+           show.legend=FALSE,alpha=0.35) +
+  geom_errorbar(mapping=aes(ymin = mean-sderr,
+                            ymax=mean+sderr),width=0.2) +
+  theme_bw() +
+  facet_grid(Condition~TimePoint) +
+  scale_x_discrete(limits = rev) +
+  scale_fill_manual(values=entityColours) +
+  scale_colour_manual(values=entityColours) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Trust in different entities by condition",
+       subtitle = "Higher = more trust") +
+  theme(axis.text.x = element_text(size=10, angle=30, vjust=0.7),
+        axis.text.y = element_text(size=10),
+        axis.title.x = element_blank(),axis.title.y = element_blank())
+
+p
+
+entity_trust_file <- here(figures_files_mastodon_dir, "entity_trust.png")
+ggsave(filename = entity_trust_file,
+       plot=p,device="png",
+       width=18,height=14, units="cm")
+
+```
+
+We can also show the change over time for each entity, by condition. The change in trust is After-Before, so positive values mean they increased their trust over the course of the study and negative values mean they decreased it.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3.5}
+tnew <- t %>%
+  pivot_wider(names_from=TimePoint,values_from=TrustRating) %>%
+  mutate(TrustChange = After-Before)
+
+trustMeans <- tnew %>%
+  group_by(Condition,Entity) %>%
+  summarise(mean = mean(TrustChange,na.rm=TRUE),
+            sd = sd(TrustChange,na.rm=TRUE),
+            n = n(),
+            sderr = sd/sqrt(n)) %>%
+  ungroup()
+
+p <- trustMeans %>%
+  ggplot(mapping=aes(x=Entity,y=mean,fill=Entity)) +
+  geom_hline(yintercept=0,linetype=2) +
+  geom_jitter(data=tnew,mapping=aes(y=TrustChange,x=Entity,
+                                 colour=Entity),
+              alpha=0.6,show.legend=FALSE,width=0.2,height=0.05) +
+  geom_col(colour="black",position="dodge",
+           show.legend=FALSE,alpha=0.35) +
+  geom_errorbar(mapping=aes(ymin = mean-sderr,
+                            ymax=mean+sderr),width=0.2) +
+  theme_bw() +
+  facet_wrap(~Condition,ncol=3) +
+  ylim(-50,50) +
+  scale_y_continuous(breaks=c(-55,65),labels=c("less","more")) +
+  scale_x_discrete(limits = rev) +
+  scale_fill_manual(values=entityColours) +
+  scale_colour_manual(values=entityColours) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Change in trust in different entities by condition",
+       subtitle = "Positive = increase in trust from before to after") +
+  theme(axis.text.x = element_text(size=10, angle=15, vjust=0.7),
+        axis.text.y = element_text(size=9, angle=90),
+        axis.title.x = element_blank(),axis.title.y = element_blank(),
+        axis.ticks.y = element_blank())
+
+p
+
+entity_trust_change_file <- here(figures_files_mastodon_dir, "entity_trust_change.png")
+ggsave(filename = entity_trust_change_file,
+       plot=p,device="png",
+       width=24,height=10, units="cm")
+
+```
+
+# Emotions and polarisation
+
+The combined file has a bunch of things relating affective polarisation and trust to other measures, but here we can explore how polarisation and the overall thermometer are related to the individual emotions we measured.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3.5}
+dEmoRep <- d %>%
+  filter(TimePoint=="Before") %>%
+  select(Subject,Condition,RepPos,RepNeg,RepAngry,RepFear,RepContempt,
+         RepAdmire,RepEnthusiastic,RepPride,RepThermometer,AffPol) %>%
+  pivot_longer(cols=c(RepPos,RepNeg,RepAngry,RepFear,RepContempt,
+         RepAdmire,RepEnthusiastic,RepPride,RepThermometer,AffPol),
+         names_to="Emotion",values_to="Republican") %>%
+  mutate(Emotion = str_remove(Emotion,"Rep"),
+         Emotion = case_when(Emotion=="Pos"~"Positive",
+                                Emotion=="Neg"~"Negative",
+                                TRUE~Emotion))
+dEmoDem <- d %>%
+  filter(TimePoint=="Before") %>%
+  select(Subject,Condition,DemPos,DemNeg,DemAngry,DemFear,DemContempt,
+         DemAdmire,DemEnthusiastic,DemPride,DemThermometer,AffPol) %>%
+  pivot_longer(cols=c(DemPos,DemNeg,DemAngry,DemFear,DemContempt,
+         DemAdmire,DemEnthusiastic,DemPride,DemThermometer,AffPol),
+         names_to="Emotion",values_to="Democrat") %>%
+  mutate(Emotion = str_remove(Emotion,"Dem"),
+         Emotion = case_when(Emotion=="Pos"~"Positive",
+                                Emotion=="Neg"~"Negative",
+                                TRUE~Emotion))
+
+dEmo <- dEmoDem %>%
+  left_join(dEmoRep,by=c("Subject","Condition","Emotion")) %>%
+  pivot_longer(cols=c("Democrat","Republican"),
+               names_to="Party",values_to="Rating")
+
+
+p <- dEmo %>%
+  filter(Emotion=="Positive" | Emotion=="Negative" | Emotion=="AffPol") %>%
+  pivot_wider(names_from="Emotion",values_from="Rating") %>%
+  ggplot(mapping=aes(x=Negative,y=Positive,colour=AffPol)) +
+  geom_point(alpha=0.6,show.legend=FALSE) +
+  theme_bw() +
+  facet_grid(Party~Condition) +
+  ylim(0,100) +
+  scale_y_continuous(breaks=c(10,95),labels=c("low","high")) +
+  xlim(0,100) +
+  scale_x_continuous(breaks=c(10,95),labels=c("low","high")) +
+  scale_colour_gradient(low="#9933FF",high="#FF9900") +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Emotion valence to democrats and republicans",
+       subtitle = "Purple = low affective polarisation; Orange = high") +
+  theme(axis.text.x = element_text(size=9),
+        axis.text.y = element_text(size=9, angle=90),
+        axis.title.x = element_blank(),axis.title.y = element_blank(),
+        axis.ticks.y = element_blank(),axis.ticks.x = element_blank())
+
+p
+
+affpol_by_valence_file <- here(figures_files_mastodon_dir, "affpol_by_valence.png")
+ggsave(filename = affpol_by_valence_file,
+       plot=p,device="png",
+       width=20,height=10, units="cm")
+
+dEmo$Emotion <- factor(dEmo$Emotion, 
+                    levels = c("Thermometer","Positive","Admire",
+                               "Enthusiastic","Pride","Negative",
+                               "Angry","Contempt","Fear","AffPol"))
+
+dEmoSum <- dEmo %>%
+  group_by(Emotion,Party) %>%
+  summarise(muAll = mean(Rating,na.rm=TRUE),
+            sdAll = sd(Rating,na.rm=TRUE),
+            n = n(),
+            sderrAll = sdAll/sqrt(n)) %>%
+  ungroup()
+
+p <- dEmoSum %>%
+  ggplot(mapping=aes(x=Emotion,y=muAll,fill=Emotion)) +
+  geom_jitter(data=dEmo,mapping=aes(y=Rating,x=Emotion,
+                                 colour=Emotion),
+              alpha=0.6,show.legend=FALSE,width=0.2,height=0.05) +
+  geom_col(colour="black",position="dodge",
+           show.legend=FALSE,alpha=0.35) +
+  geom_errorbar(mapping=aes(ymin = muAll-sderrAll,
+                            ymax=muAll+sderrAll),width=0.2) +
+  theme_bw() +
+  facet_wrap(~Party,ncol=2) +
+  ylim(0,100) +
+  scale_y_continuous(breaks=c(10,95),labels=c("low","high")) +
+  scale_fill_manual(values=emotionColours) +
+  scale_colour_manual(values=emotionColours) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  labs(title = "Emotions toward each party",
+       subtitle = "Each dot is one person",
+       y = "Emotion rating") +
+  theme(axis.text.x = element_text(size=10, angle=45, vjust=0.7),
+        axis.text.y = element_text(size=9, angle=90),
+        axis.title.x = element_blank(),axis.title.y = element_blank(),
+        axis.ticks.y = element_blank(),axis.ticks.x = element_blank())
+
+p
+
+emotions_to_party_file <- here(figures_files_mastodon_dir, "emotions_to_party.png")
+ggsave(filename = emotions_to_party_file,
+       plot=p,device="png",
+       width=24,height=14, units="cm")
+
+```
+

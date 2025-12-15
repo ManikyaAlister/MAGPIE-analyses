@@ -1,0 +1,1372 @@
+---
+title: "Cleaning the Before Survey data"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+rm(list=ls())
+library(tidyverse)
+library(here)
+
+conditionName <- "Left"
+DRY_RUN <- FALSE
+
+if (conditionName=="Control") {
+  folder <- "control/"
+} else if (conditionName=="Right") {
+  folder <- "right/"
+} else {
+  folder <- "left/"
+}
+```
+
+```{r}
+raw_magpie_dir <- "data/magpie/original"
+processed_magpie_dir <- "data/magpie/processed"
+raw_files_mastodon_dir <- "data/mastodon/files/raw"
+processed_files_mastodon_dir <- "data/mastodon/files/processed"
+```
+
+```{r}
+save_processed_file = function(data, file, dry_run = DRY_RUN) {
+  if (! dry_run) {
+    # create the directory if it does not exist
+    dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+    cat("saving to: ", file)
+    write_csv(data, file=file)
+  } else {
+    cat("(dry_run) skipping saving to: ", file)
+  }
+}
+```
+
+We always begin with the raw data straight from Qualtrics. As a rule we never change the raw data, but we can make data files that are much more nicely organised and use them instead. The information below details the key data files and variables in them, but you can look at the code in the Markdown for clarification if anything is unclear.
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+raw_names_colSpec <- cols(.default = "c")
+raw_names_file <- here(raw_files_mastodon_dir,
+                       tolower(conditionName),
+                       paste0("names", tolower(conditionName), ".csv"))
+
+names <- read_csv(file = raw_names_file, col_types = raw_names_colSpec)
+
+
+raw_before_colSpec <- cols(.default = "c")
+raw_before_file <- here(raw_files_mastodon_dir,
+                       tolower(conditionName),
+                       paste0(tolower(conditionName), "Before.csv"))
+
+d_raw <- read_csv(file = raw_before_file, col_types = raw_before_colSpec)
+
+# get rid of the first row which is Qualtrics crap
+# need to manually remove the heading to make this work
+d_raw <- d_raw[2:nrow(d_raw),]
+# remove spaces in names, they are annoying
+d_raw <- d_raw %>% rename_with(make.names)
+
+# rename some variables so they aren't annoying
+d <- d_raw %>%
+  rename(Duration = Duration..in.seconds.,
+         ResponseID = Response.ID,
+         LAT = Location.Latitude,
+         LON = Location.Longitude,
+         ProlificID = PROLIFIC_PID)  %>%
+  # remove potentially identifying and unnecessary info
+  select(-c(IP.Address,Recipient.First.Name,Recipient.Last.Name,
+            Recipient.Email,version,id,
+            Progress,Finished,Recorded.Date,
+            External.Data.Reference,Distribution.Channel,
+            User.Language,Q_RecaptchaScore,
+            Q_RelevantIDDuplicate,Q_RelevantIDDuplicateScore,
+            Q_RelevantIDFraudScore,Q_RelevantIDLastStartDate)) %>%
+  mutate(LAT = round(as.numeric(LAT)),
+         LON = round(as.numeric(LON))) %>%
+  mutate(CheckCorr = case_when(
+    CheckQuestion > 69 & CheckQuestion < 80 ~ 1,
+    TRUE ~ 0)) %>%
+  mutate(Condition = conditionName,
+         TimePoint = "Before") %>%
+  left_join(names,by="ProlificID") %>%
+  select(-c(ProlificID,STUDY_ID,SESSION_ID,Random.ID))
+
+# remove people who didn't get the check question correct
+# or have NA for LAT and LON
+d_bad <- d %>%
+  filter(CheckCorr==0 | is.na(LON) | is.na(LAT) | is.na(Subject))
+
+d <- d %>%
+  filter(CheckCorr==1 & !is.na(LON) & !is.na(LAT) & !is.na(Subject))
+
+# write the full data file
+processed_before_colSpec <- cols(.default = "c")
+processed_before_file <- here(processed_files_mastodon_dir,
+                             tolower(conditionName),
+                             "alldata_before_raw.csv")
+
+d %>% save_processed_file(file = processed_before_file)
+
+processed_bad_before_file <- here(processed_files_mastodon_dir,
+                             tolower(conditionName),
+                             "baddata_before_raw.csv")
+
+d_bad %>% save_processed_file(file = processed_bad_before_file)
+```
+
+## Demographic data
+
+First the demographic data we might care about. I created two files: one, called `data_demographics_all.csv`, has many columns containing multiple versions of the variables with different codings (e.g., converting them to numbers as well as text, etc). That was very long and contained a lot of information we probably don't need so I created a more tractable version called `data_demographics.csv` which still has a lot of info but is less excessive. 
+
+The variables in the shorter version are described below. If you want to understand the additional variables in the full version -- and you can't figure them out based on the variables in the shorter version -- please look at the R code in this Markdown. It is fairly self-explanatory and I don't have the time to detail all of that in plain English as well.
+
+### data_demographics.csv
+
+The dataframe this corresponds to is `d_demo` and it has all of the information about participant demographics etc. Each row corresponds to one participant, and the columns are:
+
+**Subject**: the ID number corresponding to that participant
+
+**UserName**: the username that person had on Magpie Social. NA if they didn't end up participating on Magpie Social
+
+**Condition**: the condition these participants are in (i.e., Control or Right or Left). All participants are the same (set using the variable at the top of the Markdown; having this variable in the data will make it easier to combine files later)
+
+**TimePoint**: the time point this survey corresponds to (which in this case is Before); having this variable in the data will make it easier to combine files later
+
+**LAT**: The latitude coordinates as reported by Qualtrics, rounded to the nearest integer to preserve anonymity. 
+
+**LON**: The latitude coordinates as reported by Qualtrics, rounded to the nearest integer to preserve anonymity. 
+
+**Duration**: This is how long it took them (in minutes) to do the experiment. Note that this is the time from opening it to submitting, not necessarily the time on task if they went off and did something else in the middle. But still gives a decent approximation to time spent.
+
+**CheckCorr**: This is 1 if the person got the check question correct (which asked them to put in a number between 70 and 80). People who got it incorrect should not be in the dataset (they are saved in the `baddata_raw.csv` file if you want to find them) so this is just a sanity check to make sure.
+
+**Age**: Their self-reported age in years.
+
+**Sex**: Their self-reported sex at birth: *male*, *female*, *other* (which includes both intersex and other)
+
+**Gender**: Their self-reported gender: *male*, *female*, *nbqueer* (which includes both non-binary and genderqueer), and *other*
+
+**Orientation**: Their self-reported sexual orientation: *straight*, *gay* (which includes both gay and lesbian), and *queer* (which includes bisexual, pansexual, queer, and other)
+
+**Trans**: This is coded as 1 if their gender is *nbqueer* or *other*, or their self-reported gender does not match their sex assigned at birth. Anything else indicates a cis person, which is coded as 0. This is of particular interest given that one of the topics is Trans issues.
+
+**LGBT**: This is coded as 1 if their sexual orientation is anything other than straight or they are trans. Anything else is 0, indicating someone who is not a part of the LGBT. This is of particular interest given that one of the topics is Trans issues.
+
+**English**: Their self-reported rating of English fluency: *native*, *good* (which includes both fluent and proficient), and *poor* (which includes conversational and beginner)
+
+**Education**: Their self-reported education level: *highschool* (which includes people who haven't graduated from high school, people with only a high school degree, and people with only a GED), *somecollege* (which includes people who have done some uni but not completed it for a degree, or have a TAFE/Vocational/Associates degree), *undergrad* (these are people with a university bachelor's degree but no higher), *postgrad* (this includes all of the various postgrad and professional degrees, like master's, professional, and phd)
+
+**Race**: The race question allowed people to select multiple races/ethnicities, which made for tricky coding. I coded people as *multiracial* if they fell into more than one of the following categories, and otherwise as the categories themselves:  *white* (includes White or Caucasian), *black* (includes African or Black), *mideast* (includes Middle Eastern, Arab, Palestinian), *indian* (meaning the subcontinent), *asian* (includes Asian, Japanese, Chinese, Korean), *hispanic* (includes Hispanic, Latin American), and *other* (includes Native American, Indigenous, Pacific Islander, Other).
+
+**RaceMidEast**: This is 1 if the person selected Middle Eastern, Arab, or Palestinian, and 0 otherwise. The reason I calculated this variable (i.e., that it's not just a duplicate of **Race**) is that some multiracial people might have included middle eastern descent and some might not have. Those who included it would be called 1 according to the MidEast variable even though they are coded as *multiracial* in Race. This is of particular interest given that one of the topics is Israel/Palestine.
+
+**Religion**: Self-reported religious tradition: *christian* (includes Protestant, Catholic, and Eastern Orthodox), *mormon*, *jewish*, *eastern* (includes Buddhist and Hindu), *muslim*, *other* (includes Pagan and Other), and *none* (includes Agnostic and Atheist)
+
+**GodBelief**: Reported measure of how important religion is to the person: 3 = very important, 2 = somewhat important, 1 = not too important, 0 = not at all important
+
+**QualityOverall**: Answers to the question about how they would rate their quality of life in general, overall: 6 = excellent, 5 = very good, 4 = good, 3 = fine, 2 = tolerable, 1 = poor, 0 = very poor
+
+**QualityAverage**: In addition to the QualityOverall question they were also asked to rate their quality of life along social dimensions, in terms of mental health, and in terms of physical health (same 0-6 scale described above). The QualityAverage variable is the average of their answers on these three other questions. 
+
+**IncomeRelative**: Answers to how they would rate their income relative to most Americans: 4 = far above average, 3 = above average, 2 = average, 1 = below average, 0 = far below average.
+
+**PoliticalIDNum**: Answers to their self-rated political identification: 6 = strong Republican, 5 = Republican, 4 = slight Republican; 3 = independent; 2 = slight Democrat, 1 = Democrat, 0 = strong Democrat
+
+**PoliticalID**: A more categorical measure of political identification: *democrat* (PoliticalIDNum answers from 0 to 2), *republican* (from 4 to 6), and *independent* (a 3)
+
+**Election2020**: Who they reported voting for in 2020: *biden*, *trump*, *norecall* (they didn't remember), *novote* (they didn't vote), *other*
+
+**SocialMedia**: We asked them to rate their usage of a lot of different social media platforms (Facebook, Tiktok, Reddit, Instagram, Twitter, Bluesky, Threads, TruthSocial, Snapchat, Mastodon, YouTube, LinkedIn, and Other). Each was coded as follows: 5 = several times daily, 4 = daily, 3 = weekly, 2 = monthly, 1 = rarely, 0 = never. The data for each platform is found in the `_all` dataset, but to make this tractable I instead calculated this summary measure which is just the number of platforms that they answered anything other than *never* to (i.e., the number of platforms they use at all).
+
+**SocialMediaMax**: This is another social media summary measure which reflects the maximum answer they gave to any of the social media platform questios. For instance a 4 would indicate that that person uses at least one social media platform daily. I thought this might give the best overview of someone's social media usage; it doesn't really matter if they use lots of different ones, only how often they are on it in general.
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+### DEMOGRAPHIC DATA
+d_demo <- d %>%
+  select(Subject,UserName,TimePoint,Condition,Duration,LAT,LON,
+         CheckQuestion,CheckCorr,Age,
+         Sex...Selected.Choice,Gender...Selected.Choice,
+         Orientation...Selected.Choice,English,
+         Education...Selected.Choice,ZIP,Background...Selected.Choice,
+         Race...Selected.Choice,Religion...Selected.Choice,
+         GodBelief,RateQuality...Your.life.overall,
+         RateQuality...Your.social.activities.and.relationships,
+         RateQuality...Your.mental.health,
+         RateQuality...Your.physical.health,
+         IncomeRelative,IncomeSatisfaction,
+         SocialMediaUse...Facebook,SocialMediaUse...Tiktok,
+         SocialMediaUse...Bluesky,SocialMediaUse...Instagram,
+         SocialMediaUse...Reddit,SocialMediaUse...Twitter.X,
+         SocialMediaUse...Threads,SocialMediaUse...Mastodon,
+         SocialMediaUse...TruthSocial,SocialMediaUse...YouTube,
+         SocialMediaUse...LinkedIn,SocialMediaUse...Snapchat,
+         SocialMediaUse...Other,
+         PoliticalID...Selected.Choice,Election2020...Selected.Choice) %>%
+    rename(Sex = Sex...Selected.Choice,
+         Gender = Gender...Selected.Choice,
+         EnglishBroad = English,
+         OrientationBroad = Orientation...Selected.Choice,
+         EducationBroad = Education...Selected.Choice,
+         BackgroundText = Background...Selected.Choice,
+         RaceBroad = Race...Selected.Choice,
+         ReligionBroad = Religion...Selected.Choice,
+         QualityOverall = RateQuality...Your.life.overall,
+         QualitySocial = RateQuality...Your.social.activities.and.relationships,
+         QualityMental = RateQuality...Your.mental.health,
+         QualityPhysical = RateQuality...Your.physical.health,
+         SMFacebook = SocialMediaUse...Facebook,
+         SMTiktok = SocialMediaUse...Tiktok,
+         SMBluesky = SocialMediaUse...Bluesky,
+         SMInstagram = SocialMediaUse...Instagram,
+         SMReddit = SocialMediaUse...Reddit,
+         SMTwitter = SocialMediaUse...Twitter.X,
+         SMThreads = SocialMediaUse...Threads,
+         SMMastodon = SocialMediaUse...Mastodon,
+         SMTruthSocial = SocialMediaUse...TruthSocial,
+         SMYouTube = SocialMediaUse...YouTube,
+         SMLinkedIn = SocialMediaUse...LinkedIn,
+         SMSnapchat = SocialMediaUse...Snapchat,
+         SMOther = SocialMediaUse...Other,
+         PoliticalIDNum = PoliticalID...Selected.Choice,
+         Election2020 = Election2020...Selected.Choice)
+  
+# now recode some variables
+d_demo <- d_demo %>%
+  # recode duration so it's in minutes which is easier to think about
+  mutate(Duration = round(as.numeric(Duration)/60,1)) %>%
+  # recode other variables so cleaner
+  mutate(Gender = case_when(
+    Gender=="Female" ~ "female",
+    Gender=="Male" ~ "male",
+    Gender=="Non-binary" ~ "nbqueer",
+    Gender=="Genderqueer" ~ "nbqueer",
+    Gender=="Other" ~ "other",
+    TRUE~NA)) %>%
+  mutate(Sex = case_when(
+    Sex=="Female" ~ "female",
+    Sex=="Male" ~ "male",
+    Sex=="Intersex" ~ "other",
+    Sex=="Other" ~ "other",
+    TRUE~NA)) %>%
+  mutate(OrientationBroad = case_when(
+    OrientationBroad=="Straight" ~ "straight",
+    OrientationBroad=="Gay" ~ "gay",
+    OrientationBroad=="Lesbian" ~ "lesbian",
+    OrientationBroad=="Bisexual" ~ "bipan",
+    OrientationBroad=="Pansexual" ~ "bipan",
+    OrientationBroad=="Queer" ~ "queer",
+    OrientationBroad=="Other" ~ "other",
+    TRUE~NA)) %>%
+  mutate(EnglishBroad = case_when(
+    EnglishBroad=="Conversational" ~ "convers",
+    EnglishBroad=="Native speaker" ~ "native",
+    EnglishBroad=="Proficient" ~ "proficient",
+    EnglishBroad=="Beginner" ~ "beginner",
+    EnglishBroad=="Fluent" ~ "fluent", TRUE~NA)) %>%
+  mutate(EducationBroad = case_when(
+    EducationBroad=="No diploma" ~ "nodiploma",
+    EducationBroad=="High school or GED" ~ "highschool",
+    EducationBroad=="Some college, no degree" ~ "somecollege",
+    EducationBroad=="Vocational or associate" ~ "twoyrcollege",
+    EducationBroad=="Bachelor" ~ "fouryrcollege",
+    EducationBroad=="Masters" ~ "masters",
+    EducationBroad=="Professional" ~ "prof",
+    EducationBroad=="Doctorate" ~ "phd",
+    EducationBroad=="Other" ~ "other",
+    TRUE~NA)) %>%
+  mutate(BackgroundText = case_when(
+    BackgroundText=="I have mostly lived in the same town/city" ~ "sametown",
+    BackgroundText=="I have mostly lived in the same state" ~ "samestate",
+    BackgroundText=="I have mostly lived in the same region (but multiple states) of the US" ~ "sameregion",
+    BackgroundText=="I have lived in more than one region of the US, but no other countries" ~ "manyregions",
+    BackgroundText=="I have mostly lived in the US but spent some time living in other country(ies)" ~ "someabroad",
+    BackgroundText=="I have lived approximately equally between the US and other country(ies)" ~ "equalabroad",
+    BackgroundText=="I have mostly lived in other country(ies)" ~ "mostlyabroad",
+    TRUE~NA)) %>%
+mutate(ReligionBroad = case_when(
+    ReligionBroad=="Protestant"~"protestant",
+    ReligionBroad=="Catholic"~"catholic",
+    ReligionBroad=="Eastern Orthodox"~"orthodox",
+    ReligionBroad=="Mormon"~"mormon",
+    ReligionBroad=="Jewish"~"jewish",
+    ReligionBroad=="Buddhist"~"buddhist",
+    ReligionBroad=="Hindu"~"hindu",
+    ReligionBroad=="Muslim, Islam"~"muslim",
+    ReligionBroad=="Pagan"~"pagan",
+    ReligionBroad=="Agnostic"~"agnostic",
+    ReligionBroad=="Atheist"~"atheist",
+    ReligionBroad=="Other"~"other",
+    TRUE~NA)) %>%
+mutate(GodBelief = case_when(
+    GodBelief=="Very important"~3,
+    GodBelief=="Somewhat important"~2,
+    GodBelief=="Not too important"~1,
+    GodBelief=="Not at all important"~0,
+    TRUE~NA)) %>%
+mutate(QualityOverall = case_when(
+    QualityOverall=="Excellent"~6,
+    QualityOverall=="Very good"~5,
+    QualityOverall=="Good"~4,
+    QualityOverall=="Fine"~3,
+    QualityOverall=="Tolerable"~2,
+    QualityOverall=="Poor"~1,
+    QualityOverall=="Very poor"~0,
+    TRUE~NA)) %>%
+mutate(QualitySocial = case_when(
+    QualitySocial=="Excellent"~6,
+    QualitySocial=="Very good"~5,
+    QualitySocial=="Good"~4,
+    QualitySocial=="Fine"~3,
+    QualitySocial=="Tolerable"~2,
+    QualitySocial=="Poor"~1,
+    QualitySocial=="Very poor"~0,
+    TRUE~NA)) %>%
+mutate(QualityMental = case_when(
+    QualityMental=="Excellent"~6,
+    QualityMental=="Very good"~5,
+    QualityMental=="Good"~4,
+    QualityMental=="Fine"~3,
+    QualityMental=="Tolerable"~2,
+    QualityMental=="Poor"~1,
+    QualityMental=="Very poor"~0,
+    TRUE~NA)) %>%  
+mutate(QualityPhysical = case_when(
+    QualityPhysical=="Excellent"~6,
+    QualityPhysical=="Very good"~5,
+    QualityPhysical=="Good"~4,
+    QualityPhysical=="Fine"~3,
+    QualityPhysical=="Tolerable"~2,
+    QualityPhysical=="Poor"~1,
+    QualityPhysical=="Very poor"~0,
+    TRUE~NA)) %>%
+  mutate(IncomeRelative = case_when(
+    IncomeRelative=="Far above average"~4,
+    IncomeRelative=="Above average"~3,
+    IncomeRelative=="Average"~2,
+    IncomeRelative=="Below average"~1,
+    IncomeRelative=="Far below average"~0,
+    TRUE~NA)) %>%
+  mutate(IncomeSatisfaction = case_when(
+    IncomeSatisfaction=="Very satisfied"~4,
+    IncomeSatisfaction=="Pretty well satisfied"~3,
+    IncomeSatisfaction=="Somewhat satisfied"~2,
+    IncomeSatisfaction=="Not very satisfied"~1,
+    IncomeSatisfaction=="Not at all satisfied"~0,
+    TRUE~NA)) %>%
+  mutate(SMFacebook = case_when(
+    SMFacebook=="Several times daily"~5,
+    SMFacebook=="Daily"~4,
+    SMFacebook=="Weekly"~3,
+    SMFacebook=="Monthly"~2,
+    SMFacebook=="Rarely"~1,
+    SMFacebook=="Never"~0,
+    TRUE~NA)) %>%
+  mutate(SMTiktok = case_when(
+    SMTiktok=="Several times daily"~5,
+    SMTiktok=="Daily"~4,
+    SMTiktok=="Weekly"~3,
+    SMTiktok=="Monthly"~2,
+    SMTiktok=="Rarely"~1,
+    SMTiktok=="Never"~0,
+    TRUE~NA)) %>%
+  mutate(SMBluesky = case_when(
+    SMBluesky=="Several times daily"~5,
+    SMBluesky=="Daily"~4,
+    SMBluesky=="Weekly"~3,
+    SMBluesky=="Monthly"~2,
+    SMBluesky=="Rarely"~1,
+    SMBluesky=="Never"~0,
+    TRUE~NA)) %>%
+  mutate(SMInstagram = case_when(
+    SMInstagram=="Several times daily"~5,
+    SMInstagram=="Daily"~4,
+    SMInstagram=="Weekly"~3,
+    SMInstagram=="Monthly"~2,
+    SMInstagram=="Rarely"~1,
+    SMInstagram=="Never"~0,
+    TRUE~NA)) %>%
+  mutate(SMReddit = case_when(
+    SMReddit=="Several times daily"~5,
+    SMReddit=="Daily"~4,
+    SMReddit=="Weekly"~3,
+    SMReddit=="Monthly"~2,
+    SMReddit=="Rarely"~1,
+    SMReddit=="Never"~0,
+    TRUE~NA)) %>%
+  mutate(SMTwitter = case_when(
+    SMTwitter=="Several times daily"~5,
+    SMTwitter=="Daily"~4,
+    SMTwitter=="Weekly"~3,
+    SMTwitter=="Monthly"~2,
+    SMTwitter=="Rarely"~1,
+    SMTwitter=="Never"~0,
+    TRUE~NA)) %>%
+  mutate(SMThreads = case_when(
+    SMThreads=="Several times daily"~5,
+    SMThreads=="Daily"~4,
+    SMThreads=="Weekly"~3,
+    SMThreads=="Monthly"~2,
+    SMThreads=="Rarely"~1,
+    SMThreads=="Never"~0,
+    TRUE~NA)) %>%
+  mutate(SMMastodon = case_when(
+    SMMastodon=="Several times daily"~5,
+    SMMastodon=="Daily"~4,
+    SMMastodon=="Weekly"~3,
+    SMMastodon=="Monthly"~2,
+    SMMastodon=="Rarely"~1,
+    SMMastodon=="Never"~0,
+    TRUE~NA)) %>% 
+  mutate(SMTruthSocial = case_when(
+    SMTruthSocial=="Several times daily"~5,
+    SMTruthSocial=="Daily"~4,
+    SMTruthSocial=="Weekly"~3,
+    SMTruthSocial=="Monthly"~2,
+    SMTruthSocial=="Rarely"~1,
+    SMTruthSocial=="Never"~0,
+    TRUE~NA)) %>%  
+  mutate(SMYouTube = case_when(
+    SMYouTube=="Several times daily"~5,
+    SMYouTube=="Daily"~4,
+    SMYouTube=="Weekly"~3,
+    SMYouTube=="Monthly"~2,
+    SMYouTube=="Rarely"~1,
+    SMYouTube=="Never"~0,
+    TRUE~NA)) %>% 
+  mutate(SMLinkedIn = case_when(
+    SMLinkedIn=="Several times daily"~5,
+    SMLinkedIn=="Daily"~4,
+    SMLinkedIn=="Weekly"~3,
+    SMLinkedIn=="Monthly"~2,
+    SMLinkedIn=="Rarely"~1,
+    SMLinkedIn=="Never"~0,
+    TRUE~NA)) %>% 
+  mutate(SMSnapchat = case_when(
+    SMSnapchat=="Several times daily"~5,
+    SMSnapchat=="Daily"~4,
+    SMSnapchat=="Weekly"~3,
+    SMSnapchat=="Monthly"~2,
+    SMSnapchat=="Rarely"~1,
+    SMSnapchat=="Never"~0,
+    TRUE~NA)) %>% 
+  mutate(SMOther = case_when(
+    SMOther=="Several times daily"~5,
+    SMOther=="Daily"~4,
+    SMOther=="Weekly"~3,
+    SMOther=="Monthly"~2,
+    SMOther=="Rarely"~1,
+    SMOther=="Never"~0,
+    TRUE~NA)) %>%
+  mutate(PoliticalIDNum = case_when(
+    PoliticalIDNum=="Strong Democrat"~0,
+    PoliticalIDNum=="Democrat"~1,
+    PoliticalIDNum=="Slight Democrat"~2,
+    PoliticalIDNum=="Independent"~3,
+    PoliticalIDNum=="Slight Republican"~4,
+    PoliticalIDNum=="Republican"~5,
+    PoliticalIDNum=="Strong Republican"~6,
+    TRUE~NA)) %>%
+  mutate(Election2020 = case_when(
+    Election2020=="Biden"~"biden",
+    Election2020=="Trump"~"trump",
+    Election2020=="I don't remember"~"norecall",
+    Election2020=="I didn't vote"~"novote",
+    Election2020=="Other"~"other",
+    TRUE~NA))
+  
+# now let's create some new useful variables
+d_demo <- d_demo %>%
+  mutate(Trans = case_when(
+    Gender=="other"~"yes",
+    Gender=="male" & Sex=="female" ~ "yes",
+    Gender=="female" & Sex=="male" ~ "yes",
+    Sex=="other" ~ "yes",
+    TRUE~"no")) %>%
+  mutate(Orientation = case_when(
+    OrientationBroad=="straight" ~ "straight",
+    OrientationBroad=="gay" ~ "gay",
+    OrientationBroad=="lesbian" ~ "gay",
+    OrientationBroad=="bipan" ~ "queer",
+    OrientationBroad=="bipan" ~ "queer",
+    OrientationBroad=="queer" ~ "queer",
+    OrientationBroad=="other" ~ "queer",
+    TRUE~NA)) %>%
+  mutate(LGBT = case_when(
+    Orientation=="gay" ~ "yes",
+    Orientation=="queer" ~ "yes",
+    Trans=="yes" ~ "yes",
+    TRUE~"no")) %>%
+  mutate(English = case_when(
+    EnglishBroad=="native" ~ "native",
+    EnglishBroad=="fluent" ~ "good",
+    EnglishBroad=="proficient" ~ "good",
+    EnglishBroad=="convers" ~ "poor",
+    EnglishBroad=="beginner" ~ "poor",
+    TRUE~NA)) %>%
+  mutate(RaceWhite = case_when(
+    str_detect(RaceBroad,"Caucasian") ~ 1,
+    str_detect(RaceBroad,"White") ~ 1,
+    !is.na(RaceBroad) ~ 0,
+    TRUE~NA)) %>%
+  mutate(RaceBlack = case_when(
+    str_detect(RaceBroad,"African") ~ 1,
+    str_detect(RaceBroad,"Black") ~ 1,
+    !is.na(RaceBroad) ~ 0,
+    TRUE~NA)) %>%  
+  mutate(RaceOther = case_when(
+    str_detect(RaceBroad,"Native American") ~ 1,
+    str_detect(RaceBroad,"Indigenous") ~ 1,
+    str_detect(RaceBroad,"Pacific Islander") ~ 1,
+    str_detect(RaceBroad,"Other") ~ 1,
+    !is.na(RaceBroad) ~ 0,
+    TRUE~NA)) %>%  
+  mutate(RaceMidEast = case_when(
+    str_detect(RaceBroad,"Middle Eastern") ~ 1,
+    str_detect(RaceBroad,"Arab") ~ 1,
+    str_detect(RaceBroad,"Palestinian") ~ 1,
+    !is.na(RaceBroad) ~ 0,
+    TRUE~NA)) %>%  
+  mutate(RaceIndian = case_when(
+    str_detect(RaceBroad,"Indian") ~ 1,
+    !is.na(RaceBroad) ~ 0,
+    TRUE~NA)) %>% 
+  mutate(RaceAsian = case_when(
+    str_detect(RaceBroad,"Asian") ~ 1,
+    str_detect(RaceBroad,"Japanese") ~ 1,
+    str_detect(RaceBroad,"Chinese") ~ 1,
+    str_detect(RaceBroad,"Korean") ~ 1,
+    !is.na(RaceBroad) ~ 0,
+    TRUE~NA)) %>%   
+  mutate(RaceHispanic = case_when(
+    str_detect(RaceBroad,"Hispanic") ~ 1,
+    str_detect(RaceBroad,"Latin American") ~ 1,
+    !is.na(RaceBroad) ~ 0,
+    TRUE~NA)) %>% 
+  mutate(RaceMulti = RaceWhite+RaceBlack+RaceOther+
+           RaceMidEast+RaceIndian+RaceAsian+RaceHispanic) %>%
+  mutate(Race = case_when(
+    RaceMulti > 1 ~ "multiracial",
+    RaceWhite==1 ~ "white",
+    RaceBlack==1 ~ "black",
+    RaceOther==1 ~ "other",
+    RaceMidEast==1 ~ "mideast",
+    RaceIndian==1 ~ "indian",
+    RaceAsian==1 ~ "asian",
+    RaceHispanic==1 ~ "hispanic",
+    TRUE~NA)) %>%
+  mutate(Education = case_when(
+    EducationBroad=="nodiploma" ~ "highschool",
+    EducationBroad=="highschool" ~ "highschool",
+    EducationBroad=="somecollege" ~ "somecollege",
+    EducationBroad=="twoyrcollege" ~ "somecollege",
+    EducationBroad=="fouryrcollege" ~ "undergrad",
+    EducationBroad=="masters" ~ "postgrad",
+    EducationBroad=="prof" ~ "postgrad",
+    EducationBroad=="phd" ~ "postgrad",
+    TRUE~NA)) %>%
+mutate(EducationNum = case_when(
+    EducationBroad=="nodiploma" ~ 0,
+    EducationBroad=="highschool" ~ 1,
+    EducationBroad=="somecollege" ~ 2,
+    EducationBroad=="twoyrcollege" ~ 3,
+    EducationBroad=="fouryrcollege" ~ 4,
+    EducationBroad=="masters" ~ 5,
+    EducationBroad=="prof" ~ 6,
+    EducationBroad=="phd" ~ 7,
+    TRUE~NA)) %>%
+  mutate(BackgroundNum = case_when(
+    BackgroundText== "sametown" ~ 0,
+    BackgroundText=="samestate" ~ 1,
+    BackgroundText=="sameregion" ~ 2,
+    BackgroundText=="manyregions" ~ 3,
+    BackgroundText=="someabroad" ~ 4,
+    BackgroundText=="equalabroad" ~ 5,
+    BackgroundText=="mostlyabroad" ~ 6,
+    TRUE~NA)) %>%
+  mutate(Religion = case_when(
+    ReligionBroad=="protestant" ~ "christian",
+    ReligionBroad=="catholic" ~ "christian",
+    ReligionBroad=="orthodox" ~ "christian",
+    ReligionBroad=="mormon" ~ "mormon",
+    ReligionBroad=="jewish" ~ "jewish",
+    ReligionBroad=="buddhist" ~ "eastern",
+    ReligionBroad=="hindu" ~ "eastern",
+    ReligionBroad=="pagan" ~ "other",
+    ReligionBroad=="other" ~ "other",
+    ReligionBroad=="muslim" ~ "muslim",
+    ReligionBroad=="agnostic" ~ "none",
+    ReligionBroad=="atheist" ~ "none",
+    TRUE~NA)) %>%
+  mutate(PoliticalID = case_when(
+    PoliticalIDNum < 3 ~ "democrat",
+    PoliticalIDNum==3 ~ "independent",
+    PoliticalIDNum > 3 ~ "republican",
+    TRUE~NA)) %>%
+  mutate(QualityAverage = round((QualitySocial + 
+                             QualityMental + QualityPhysical)/3,2)) %>%
+  mutate(SocialMediaAverage = round((
+    ifelse(is.na(SMFacebook), 0, SMFacebook) +
+    ifelse(is.na(SMInstagram), 0, SMInstagram) +
+    ifelse(is.na(SMTiktok), 0, SMTiktok) +
+    ifelse(is.na(SMReddit), 0, SMReddit) +
+    ifelse(is.na(SMTwitter), 0, SMTwitter) +
+    ifelse(is.na(SMBluesky), 0, SMBluesky) +
+    ifelse(is.na(SMThreads), 0, SMThreads) +
+    ifelse(is.na(SMTruthSocial), 0, SMTruthSocial) +
+    ifelse(is.na(SMSnapchat), 0, SMSnapchat) +
+    ifelse(is.na(SMMastodon), 0, SMMastodon) +
+    ifelse(is.na(SMYouTube), 0, SMYouTube) +
+    ifelse(is.na(SMLinkedIn), 0, SMLinkedIn) +
+    ifelse(is.na(SMOther), 0, SMOther))/13,2)) %>%
+    mutate(SocialMedia = (ifelse(is.na(SMFacebook), 0, SMFacebook>0) +
+           ifelse(is.na(SMInstagram), 0, SMInstagram>0) +
+           ifelse(is.na(SMTiktok), 0, SMTiktok>0) +
+           ifelse(is.na(SMReddit), 0, SMReddit>0) +
+           ifelse(is.na(SMTwitter), 0, SMTwitter>0) +
+           ifelse(is.na(SMBluesky), 0, SMBluesky>0) +
+           ifelse(is.na(SMThreads), 0, SMThreads>0) +
+           ifelse(is.na(SMTruthSocial), 0, SMTruthSocial>0) +
+           ifelse(is.na(SMSnapchat), 0, SMSnapchat>0) +
+           ifelse(is.na(SMMastodon), 0, SMMastodon>0) +
+           ifelse(is.na(SMYouTube), 0, SMYouTube>0) +
+           ifelse(is.na(SMLinkedIn), 0, SMLinkedIn>0) +
+           ifelse(is.na(SMOther), 0, SMOther>0))) %>%
+  rowwise() %>%
+  mutate(SocialMediaMax = max(SMFacebook, SMTiktok, SMReddit, 
+                     SMInstagram, SMTwitter, SMBluesky, 
+                     SMThreads, SMTruthSocial, SMSnapchat, 
+                     SMMastodon, SMYouTube, SMLinkedIn, SMOther,
+                     na.rm=TRUE))
+
+# put everything in a good order
+d_demo <- d_demo %>%
+  select(Subject,UserName,Condition,TimePoint,LAT,LON,Duration,CheckCorr,
+         CheckQuestion,Age,Sex,Gender,Orientation,OrientationBroad,Trans,
+         LGBT,English,EnglishBroad,Education,EducationBroad,
+         EducationNum,BackgroundText,BackgroundNum,
+         Race,RaceMidEast,RaceBroad,Religion,ReligionBroad,GodBelief,
+         QualityAverage,QualityOverall,QualitySocial,
+         QualityMental,QualityPhysical,IncomeRelative,
+         IncomeSatisfaction,PoliticalID,PoliticalIDNum,
+         Election2020,SocialMedia,SocialMediaMax,
+         SocialMediaAverage,SMFacebook,SMInstagram,
+         SMReddit,SMTiktok,SMSnapchat,SMTwitter,SMBluesky,
+         SMThreads,SMMastodon,SMTruthSocial,SMLinkedIn,
+         SMOther)
+
+# write the file
+processed_demo_colSpec <- cols(.default = "c")
+processed_demo_file <- here(processed_files_mastodon_dir,
+                            tolower(conditionName),
+                            "data_demographics_all.csv")
+
+d_demo %>% save_processed_file(file = processed_demo_file)
+```
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+dd <- d_demo %>%
+  select(Subject,UserName,Condition,TimePoint,LAT,LON,Duration,CheckCorr,
+         Age,Sex,Gender,Orientation,
+         Trans,LGBT,English,Education,Race,RaceMidEast,
+         Religion,GodBelief,QualityAverage,QualityOverall,
+         IncomeRelative,PoliticalID,PoliticalIDNum,
+         Election2020,SocialMedia,SocialMediaMax)
+
+# write a smaller file
+processed_ddemo_colSpec <- cols(.default = "c")
+processed_ddemo_file <- here(processed_files_mastodon_dir,
+                            tolower(conditionName),
+                            "data_demographics.csv")
+
+dd %>% save_processed_file(file = processed_ddemo_file)
+```
+
+## Prior beliefs data
+
+Make a dataset with all of the prior belief data.
+
+### data_priors_long.csv
+
+The dataframe this corresponds to is `d_priors_long` and it has all of the information about the prior belief ratings on each of the 49 beliefs (does not include the check question). Each row corresponds to one participant with one belief, and the columns are:
+
+**Subject**: the ID number corresponding to that participant
+
+**UserName**: the username that person had on Magpie Social. NA if they didn't end up participating on Magpie Social
+
+**Condition**: the condition these participants are in (i.e., Control or Right or Left). All participants are the same (set using the variable at the top of the Markdown; having this variable in the data will make it easier to combine files later)
+
+**TimePoint**: the time point this survey corresponds to (which in this case is Before); having this variable in the data will make it easier to combine files later
+
+**Topic**: This is a one-word description of the topic of the claim. Includes the four main topics (`Israel`, `Trans`, `AI`, and `Climate`) but also several others (`Ukraine`, `Tech`, `Environment`, `Gender`, and `Fun`) which were chosen to span a nice range of beliefs and allow us to look at spillover. 
+
+**ShortText**: This is just a short description of what that claim is. So for instance  `TransAcceptanceGood` corresponds to the statement "Transgender identities should be as socially acceptable as religious or ethnic identities". These descriptions can be found in the `claims-list.csv` dataset and thus changed there if you want.
+
+**Polarity**: These are classified as `left` if we thought people more on the political left would endorse them, `right` if the other direction, and `neutral` for the Fun items. For AI we assumed that pro-AI was `right` and for Israel we assumed that pro-Israel was `right`, but we expect these to be fairly weak trends if there at all.
+
+**RawBelief**: This is the belief rating that participant gave to them, where 0 means `Don't agree at all` and 100 means `100% agree`
+
+**Belief**: This is a transformation of the RawBelief, so that values closer to 0 can be interpreted as agreeing with the left viewpoint and values closer to 100 can be interpreted as agreeing with the right. It was calculated by taking all the claims with polarity of "left" and setting Belief = abs(RawBelief-100). So, e.g., if someone agreed 30% with a left claim, that would have a Belief of 70, meaning, they are closer to the right than the left. And if they agree 100% with a left claim, it would have a Belief of 0, meaning they completely agree with the left viewpoint. Claims with a polarity of "right" were not changed.
+
+**ExtremeBelief**: This is a transformation of Belief, so that values can be interpreted as the extremity of one's beliefs. It was calculated as ExtremeBelief = abs(Belief-50). Thus a value of 0 means the person selected 50, i.e., they are right in the middle. A value of 20 indicates that the person was 20 away from 50, which could be either 70% or 30%. The largest value possible is 50 (corresponding to 0% or 100%), indicating maximum extremity.
+
+**Order**: This is an ordering so topics go together; nice for viewing graphs later
+
+**Code**: Not sure you'll use this, it's just a short letter-number code for each claim, e.g., T1 is one of the Trans claims, T2 is another, etc.
+
+**Claim**: This is the full text of the claim being rated
+
+### data_summary_priors.csv
+
+The dataframe this corresponds to is `dp_sum` and it has summary information for each subject for each of the topics (e.g., Trans, AI, etc). Each row corresponds to one participant with one topic, and the columns are:
+
+**Subject**: the ID number corresponding to that participant
+
+**UserName**: the username that person had on Magpie Social. NA if they didn't end up participating on Magpie Social
+
+**Condition**: the condition these participants are in (i.e., Control or Right or Left). All participants are the same (set using the variable at the top of the Markdown; having this variable in the data will make it easier to combine files later)
+
+**TimePoint**: the time point this survey corresponds to (which in this case is Before); having this variable in the data will make it easier to combine files later
+
+**Topic**: This is a one-word description of the topic of the claim. Includes the four main topics (`Israel`, `Trans`, `AI`, and `Climate`) but also several others (`Ukraine`, `Tech`, `Environment`, `Gender`, and `Fun`) which were chosen to span a nice range of beliefs and allow us to look at spillover. 
+
+**mnBelief**: This is the mean Belief (see above) for that person for all of the claims on that Topic. Remember that Belief is set so that values closer to 0 can be interpreted as agreeing with the left viewpoint and values closer to 100 can be interpreted as agreeing with the right. This variable therefore reflects their general left/right tendency on that topic. E.g. if there were four claims in a topic, and their Rating on the claims were 25, 30, 50, and 55, then mnBelief would be 40. Note that one of the topics is called "Total"; this is their mean Belief for all topics combined - i.e., a measure of how left/right their beliefs as a whole are (note that the check question and the fun question are excluded).
+
+**sdBelief**: The standard deviation of the mean Belief for that topic.
+
+**n**: The number of datapoints feeding into the mnBelief and sdBelief Should be 6 for the four central topics, 4 for the "spillover" ones, 2 for the extras, and 48 in Total (again, fun and the check question are excluded)
+
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+raw_items_colSpec <- cols(.default = "c")
+raw_items_file <- here(raw_files_mastodon_dir,
+                       "claims-list.csv")
+
+items <- read_csv(file = raw_items_file, col_types = raw_items_colSpec)
+
+# extract the key variables and convert to long form
+d_priors_long <- d %>%
+  select(Subject, UserName, TransUndermineWomen, DogsBetterThanCats, ExactlyTwoGenders, BathroomLawsIneffective, FewTransPeopleChangeMind, NoTransHealthcareMinors, TransRightsShouldBePriority, JobLossFromAIWillBeHuge, AISurveillanceIsANetGood, AIWarfareEthicallyUnacceptable, AIRegulationTooLimiting, EmphasisOnAIBadForPeople, IndividualMedicineAIGood, PalestinesClaimsLegitimate, IsraelNeedsStrongResponse, IsraelViolatedPalestineRights, IsraelSupportedBcUniqueNeeds, MediaIgnoresPalestineSuffering, IsraelCriticismAntisemitic, ClimateShouldDelaySpend, ClimateScientistsAgree, GovtShouldSetClimateAgenda, IndustrySolveEnvironProblems, ClimateChangeRiskHealth, ClimateChangeIsGood, SystemicGenderBiasIsReal, MenLeadersWomenNurturers, SocMediaConnectMarginalised, DigitalRegsViolateFreedoms, MilitaryAidToUkraineNeeded, UkraineShouldCedeTerritory, IndividActsNotEnoughEnviron, EnvironRegsGoTooFar, IAmConcernedEnviron, WorryTooMuchEnviron, MustBreakFromTradition, TechFreeMarketAdvanceHumanity, TooMuchMilitarySpending, ShouldLimitImmigration, GovtShouldReduceInequality, IncomeTaxTooHigh, DefundPoliceMoreSocialSpending, GunsAvailableWithoutPermit, LessReligiousInfluenceGood, GovtShouldBeChristian, GovtHealthSpendingLow, VaccinesUntrustworthy, PreMaritalSexWrong,GayMarriageOK) %>%
+  pivot_longer(cols=-c(Subject,UserName),
+               names_to="ShortText",values_to="RawBelief") %>%
+  mutate(RawBelief = as.numeric(RawBelief)) %>%
+  left_join(items, by=join_by(ShortText))
+
+# create new useful variables
+d_priors_long <- d_priors_long %>%
+  mutate(Belief = case_when(
+    Polarity=="left" ~ abs(100-RawBelief),
+    TRUE~RawBelief)) %>%
+  mutate(ExtremeBelief = abs(Belief-50)) %>%
+  mutate(Condition = conditionName,
+         TimePoint = "Before")
+
+
+# put in a sensible order
+d_priors_long <- d_priors_long %>%
+  select(Subject,UserName,Condition,TimePoint,Topic,ShortText,Polarity,
+         Belief,ExtremeBelief,RawBelief,Order,Code,Claim)
+
+# write the file
+processed_priors_long_colSpec <- cols(.default = "c")
+processed_priors_long_file <- here(processed_files_mastodon_dir,
+                                   tolower(conditionName),
+                                   "data_priors_long.csv")
+
+d_priors_long %>% save_processed_file(file = processed_priors_long_file)
+```
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+# now calculate summary differences
+dp_sum_topic <- d_priors_long %>%
+  filter(Topic!="Fun") %>%
+  group_by(Subject,UserName,Topic) %>%
+  summarise(mnBelief = round(mean(Belief,na.rm=TRUE),2),
+            sdBelief = round(sd(Belief,na.rm=TRUE),2),
+            mnExtremeBelief = round(mean(ExtremeBelief,na.rm=TRUE),2),
+            sdExtremeBelief = round(sd(ExtremeBelief,na.rm=TRUE),2),
+            n = n()) %>%
+  ungroup()
+
+dp_sum_all <- d_priors_long %>%
+  filter(Topic!="Fun") %>%
+  group_by(Subject,UserName) %>%
+  summarise(mnBelief = round(mean(Belief,na.rm=TRUE),2),
+            sdBelief = round(sd(Belief,na.rm=TRUE),2),
+            mnExtremeBelief = round(mean(ExtremeBelief,na.rm=TRUE),2),
+            sdExtremeBelief = round(sd(ExtremeBelief,na.rm=TRUE),2),
+            n = n()) %>%
+  ungroup() %>%
+  mutate(Topic = "Total") %>%
+  select(Subject,UserName,Topic,mnBelief,mnExtremeBelief,
+         sdBelief,sdExtremeBelief,n)
+
+dp_sum <- rbind(dp_sum_topic,dp_sum_all)
+dp_sum <- dp_sum %>%
+  mutate(Condition = conditionName,
+         TimePoint = "Before") %>%
+  select(Subject,UserName,Condition,TimePoint,Topic,
+         mnBelief,mnExtremeBelief,
+         sdBelief,sdExtremeBelief,n)
+
+# write the file
+processed_sum_priors_colSpec <- cols(.default = "c")
+processed_sum_priors_file <- here(processed_files_mastodon_dir,
+                                  tolower(conditionName),
+                                  "data_summary_priors.csv")
+
+dp_sum %>% save_processed_file(file = processed_sum_priors_file)
+```
+
+## Polarisation and trust data
+
+Make a dataset with all of answers to the questions that we're going to ask them again at the end (about their trust in each other, polarisation, etc)
+
+### data_before_trust.csv
+
+The dataframe this corresponds to is `db_trust` and it has participant-level information about the answers to the polarisation and trust questions. Each row corresponds to one participant, and the columns are:
+
+**Subject**: the ID number corresponding to that participant
+
+**UserName**: the username that person had on Magpie Social. NA if they didn't end up participating on Magpie Social
+
+**Condition**: the condition these participants are in (i.e., Control or Right or Left). All participants are the same (set using the variable at the top of the Markdown; having this variable in the data will make it easier to combine files later)
+
+**TimePoint**: the time point this survey corresponds to (which in this case is Before); having this variable in the data will make it easier to combine files later
+
+**WVSTrust**: Their answer to the trust question taken from the World Values Survey ("Generally speaking, would you say that most people can be trusted or that you need to be very careful in dealing with people?"). Answers were coded as *trust* (Most people can be trusted), *distrust* (Need to be very careful), and *dontknow*
+
+**TrustPeople, TrustUnis, TrustMedia, TrustGovt, TrustBusiness**: People were asked "How much do you personally trust each of the following?" about people in general; universities; the news media; the government; and business and industry. Answers are on a 0 to 100 scale, with 0 meaning not at all and 100 meaning completely.
+
+**TrustOverall**: This is the average of the five Trust variables above, giving a measure of people's overall trust on a scale from 0 to 100.
+
+**RepThermometer**: People were asked to rate their feelings towards Republicans on a scale of 0 to 100, where 0 is "very unfavourable", 100 is "very favourable", and 50 is neutral.
+
+**DemThermometer**: People were asked to rate their feelings towards Democrats on a scale of 0 to 100, where 0 is "very unfavourable", 100 is "very favourable", and 50 is neutral.
+
+**AffPol**: This is a measure of affective polarisation which is abs(RepThermometer-DemThermometer). A zero indicates that they feel the same towards Republicans and Democrats, i.e., no affective polarisation at all. The higher the number the more affective polarisation, with 100 being maximum indicating either they love Democrats (DemThermometer=100) and hate Republicans (RepThermometer=0) or they love Republicans (RepThermometer=100) and hate Democrats (DemThermometer=0).
+
+**RepAngry, RepContempt, RepAdmire, RepFear, RepEnthusiastic, RepPride**: These are their Ratings of each of these emotions toward Republicans (with 0 indicating that they don't have them at all, and 100 indicating that they very much do).
+
+**DemAngry, DemContempt, DemAdmire, DemFear, DemEnthusiastic, DemPride**: These are their Ratings of each of these emotions toward Democrats (with 0 indicating that they don't have them at all, and 100 indicating that they very much do).
+
+**RepNeg**: This is the average of the responses to the three negative emotions about Republicans (RepAngry, RepContempt, RepFear).
+
+**RepPos**: This is the average of the responses to the three positive emotions about Republicans (RepAdmire, RepEnthusiastic, RepPride).
+
+**DemNeg**: This is the average of the responses to the three negative emotions about Democrats (DemAngry, DemContempt, DemFear).
+
+**DemPos**: This is the average of the responses to the three positive emotions about Democrats (DemAdmire, DemEnthusiastic, DemPride).
+
+**RelativePolitics**: This is people's self-classified level of belief polarisation ("Where would you classify your overall political beliefs, relative to most people in the US?"). Here, 0 means far to the left and 100 means far to the right.
+
+**RelativeAI, RelativeClimate, RelativeIsrael, RelativeTrans**: Same question about classifying their political beliefs relative to the population, but this time focused on each of the four main topics. 
+
+**ConsensusPolitics**: This is a measure of people's inferences about how much belief polarisation they think there is. Might be interesting to compare to our actual measures of belief polarisation! The question was "To what extent do you think that most people in the US generally agree with each other about their overall political beliefs?" and answers range from 0 to 100, with 0 meaning no agreement and 100 meaning complete agreement.
+
+**ConsensusAI, ConsensusClimate, ConsensusIsrael, ConsensusTrans**: Same question about perceived consensus/polarisation in the population, but this time focused on each of the four main topics. 
+
+**Election2024**: Who they expect to vote for in 2024:  *harris*, *trump*, *dontknow* (they can't decide), *novote* (they didn't vote), *other*
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+db_trust <- d %>%
+  select(Subject, UserName,RelativePolitics, ConsensusPolitics, WVSTrust,
+  PersonalTrust...People.in.general, PersonalTrust...Universities,
+  PersonalTrust...The.news.media, PersonalTrust...The.government,
+  PersonalTrust...Business.and.industry, Thermometer...Republicans,
+  Thermometer...Democrats, EmotionsRepub...I.feel.admiration.toward.them,
+  EmotionsRepub...I.feel.angry.toward.them, 
+  EmotionsRepub...I.feel.enthusiastic.about.them,
+  EmotionsRepub...I.feel.contempt.toward.them, 
+  EmotionsRepub...I.feel.pride.in.them, EmotionsRepub...I.feel.afraid.of.them,
+  EmotionsDem...I.feel.admiration.toward.them,
+  EmotionsDem...I.feel.angry.toward.them,
+  EmotionsDem...I.feel.enthusiastic.about.them,
+  EmotionsDem...I.feel.contempt.toward.them,
+  EmotionsDem...I.feel.pride.in.them, EmotionsDem...I.feel.afraid.of.them,
+  RelativeViews...Trans.issues,RelativeViews...AI,
+  RelativeViews...Israel.Palestine, RelativeViews...Climate.change, 
+  ConsensusViews...Trans.issues, ConsensusViews...AI,
+  ConsensusViews...Israel.Palestine, ConsensusViews...Climate.change,
+  Election2024...Selected.Choice) %>%
+    rename(TrustPeople = PersonalTrust...People.in.general, 
+           TrustUnis = PersonalTrust...Universities,
+           TrustMedia = PersonalTrust...The.news.media,
+           TrustGovt = PersonalTrust...The.government,
+           TrustBusiness = PersonalTrust...Business.and.industry,
+           RepThermometer = Thermometer...Republicans,
+           DemThermometer = Thermometer...Democrats,
+           RepAdmire = EmotionsRepub...I.feel.admiration.toward.them,
+           RepAngry = EmotionsRepub...I.feel.angry.toward.them,
+           RepEnthusiastic = EmotionsRepub...I.feel.enthusiastic.about.them,
+           RepContempt = EmotionsRepub...I.feel.contempt.toward.them,
+           RepPride = EmotionsRepub...I.feel.pride.in.them,
+           RepFear = EmotionsRepub...I.feel.afraid.of.them,
+           DemAdmire = EmotionsDem...I.feel.admiration.toward.them,
+           DemAngry = EmotionsDem...I.feel.angry.toward.them,
+           DemEnthusiastic = EmotionsDem...I.feel.enthusiastic.about.them,
+           DemContempt = EmotionsDem...I.feel.contempt.toward.them,
+           DemPride = EmotionsDem...I.feel.pride.in.them,
+           DemFear = EmotionsDem...I.feel.afraid.of.them,
+           RelativeTrans = RelativeViews...Trans.issues,
+           RelativeAI = RelativeViews...AI,
+           RelativeIsrael = RelativeViews...Israel.Palestine,
+           RelativeClimate = RelativeViews...Climate.change,
+           ConsensusTrans = ConsensusViews...Trans.issues, 
+           ConsensusAI = ConsensusViews...AI,
+           ConsensusIsrael = ConsensusViews...Israel.Palestine,
+           ConsensusClimate = ConsensusViews...Climate.change,
+           Election2024 = Election2024...Selected.Choice)
+
+# now recode some variables
+db_trust <- db_trust %>%
+  mutate(WVSTrust = case_when(
+    WVSTrust=="Most people can be trusted" ~ "trust",
+    WVSTrust=="Need to be very careful" ~ "distrust",
+    WVSTrust=="Don't know"~"dontknow",
+    TRUE~NA)) %>%
+  mutate(Election2024 = case_when(
+    Election2024=="Harris"~"harris",
+    Election2024=="Trump"~"trump",
+    Election2024=="I can't decide"~"dontknow",
+    Election2024=="I am not going to vote"~"novote",
+    Election2024=="Other"~"other",
+    TRUE~NA)) %>%
+  mutate(TrustPeople = as.numeric(TrustPeople),
+         TrustUnis = as.numeric(TrustUnis),
+         TrustMedia = as.numeric(TrustMedia),
+         TrustGovt = as.numeric(TrustGovt),
+         TrustBusiness = as.numeric(TrustBusiness),
+         RepThermometer = as.numeric(RepThermometer),
+         DemThermometer = as.numeric(DemThermometer),
+         RepAdmire = as.numeric(RepAdmire),
+         RepAngry = as.numeric(RepAngry),
+         RepEnthusiastic = as.numeric(RepEnthusiastic),
+         RepContempt = as.numeric(RepContempt),
+         RepPride = as.numeric(RepPride),
+         RepFear = as.numeric(RepFear),
+         DemAdmire = as.numeric(DemAdmire),
+         DemAngry = as.numeric(DemAngry),
+         DemEnthusiastic = as.numeric(DemEnthusiastic),
+         DemContempt = as.numeric(DemContempt),
+         DemPride = as.numeric(DemPride),
+         DemFear = as.numeric(DemFear))
+
+# now we're going to make some new useful variables
+db_trust <- db_trust %>%
+  mutate(TrustOverall = round((TrustPeople + TrustUnis + TrustGovt +
+                           TrustBusiness + TrustMedia)/5,2)) %>%
+  mutate(AffPol = abs(RepThermometer - DemThermometer),
+         RepNeg = round((RepAngry + RepFear + RepContempt)/3,2),
+         RepPos = round((RepAdmire + RepEnthusiastic + RepPride)/3,2),
+         DemNeg = round((DemAngry + DemFear + DemContempt)/3,2),
+         DemPos = round((DemAdmire + DemEnthusiastic + DemPride)/3,2)) %>%
+  mutate(Condition = conditionName,
+         TimePoint = "Before")
+
+# put in a sensible order
+db_trust <- db_trust %>%
+  select(Subject,UserName,Condition,TimePoint,WVSTrust,TrustOverall,
+         TrustPeople,TrustUnis,
+         TrustMedia,TrustGovt,TrustBusiness,RepThermometer,
+         DemThermometer,AffPol,RepNeg,RepPos,DemNeg,DemPos,
+         RepAngry,RepFear,RepContempt,RepAdmire,RepEnthusiastic,
+         RepPride,DemAngry,DemFear,DemContempt,DemAdmire,
+         DemEnthusiastic,DemPride,RelativePolitics,RelativeAI,
+         RelativeClimate,RelativeIsrael,RelativeTrans,
+         ConsensusPolitics,ConsensusAI,ConsensusClimate,
+         ConsensusIsrael,ConsensusTrans,Election2024)
+
+# write the file
+processed_before_trust_colSpec <- cols(.default = "c")
+processed_before_trust_file <- here(processed_files_mastodon_dir,
+                                  tolower(conditionName),
+                                  "data_before_trust.csv")
+
+db_trust %>% save_processed_file(file = processed_before_trust_file)
+```
+
+## Morality data
+
+### data_before_morality.csv
+
+The dataframe this corresponds to is `db_moral` and it has participant-level information about the answers to Kelly's questions about morality, polarisation, etc. Each row corresponds to one participant's answer to one question, and the columns are:
+
+**Subject**: the ID number corresponding to that participant
+
+**UserName**: the username that person had on Magpie Social. NA if they didn't end up participating on Magpie Social
+
+**Condition**: the condition these participants are in (i.e., Control or Right or Left). All participants are the same (set using the variable at the top of the Markdown; having this variable in the data will make it easier to combine files later)
+
+**TimePoint**: the time point this survey corresponds to (which in this case is Before); having this variable in the data will make it easier to combine files later
+
+**ShortText**: This is a code to the question name, corresponding to the ShortText column in the master stimuli list. Examples include Anomie11, Mor_Convic_AI_Beliefs, etc (see below).
+
+**Topic**: The different topics included in this question set: Anomie, MoralAttachment, MoralConvictions, AttributeStrength, PerceivedInequality, PoliticalThreat, StatusSeeking, and SocialPunishment.
+
+**Subtopic**: For AttributeStrength and MoralConvictions, there were the same questions repeated for each of the four conversation topics (AI, Trans, Israel, Climate). These four conversations are the subtopics. For PerceivedInequality there were five answer categories that the participant was supposed to put a number to. Those five categories (VeryPoor, Poor, Average, Wealthy, VeryWealthy) are indicated in the subtopic column, as well as in the ShortText name. For the StatusSeeking questions, the subtopics correspond to each of the questions: Respect, Control, ShowAbility, Admire, Success, Recognition. For the SocialPunlishment questions, the subtopics correspond to the questions as well: Exclude, Gossip, Online, and Cold. The subtopic for the other topics is NA.
+
+**Statement**: Text of the statement the participant was answering.
+
+**Response**: The number corresponding to the response the participant gave. The scale is different for different topics, as explained below.
+
+*Anomie*: Responses were on a 1-7 scale, as follows: 7 (strongly agree), 6 (agree), 5 (slightly agree), 4 (neither disagree nor agree), 3 (slightly disagree), 2 (disagree), 1 (strongly disagree).
+
+*MoralAttachment*: Responses were on a 1-7 scale, as follows: 7 (strongly agree), 6 (agree), 5 (slightly agree), 4 (neither disagree nor agree), 3 (slightly disagree), 2 (disagree), 1 (strongly disagree).
+
+*MoralConvictions*: Responses were on a 0-4 scale, as follows: 4 (very much), 3 (quite a bit), 2 (moderately), 1 (a little), 0 (not at all)
+
+*AttributeStrength*: Responses were on a 1-5 scale (although for this one the participants didn't see the numbers, only the labels), as follows: 5 (extremely strong), 4 (very strong), 3 (moderately strong), 2 (slightly strong), 1 (not at all strong)
+
+*PerceivedInequality*: Responses were a number between 0 and 100 indicating the percentage of people the person thought were in each category (VeryPoor, Poor, as indicated by the ShortText name as well as the subtopic classification).
+
+*SocialPunishment*: Responses were on a 1-7 scale, as follows: 7 (very likely), 6 (likely), 5 (somewhat likely), 4 (neither unlikely nor likely), 3 (somewhat unlikely), 2 (unlikely), 1 (very unlikely)
+
+*PoliticalThreat*: Responses were on a 1-7 scale, as follows: 7 (strongly agree), 6 (agree), 5 (slightly agree), 4 (neither disagree nor agree), 3 (slightly disagree), 2 (disagree), 1 (strongly disagree).
+
+*StatusSeeking*: Responses were on a 1-5 scale, as follows: 5 (extremely important), 4 (very important), 3 (moderately important), 2 (slightly important), 1 (not at all important)
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+# master stimuli list
+raw_moral_items_colSpec <- cols(.default = "c")
+raw_moral_items_file <- here(raw_files_mastodon_dir,
+                       "morality-stimuli.csv")
+
+morality_items <- read_csv(file = raw_moral_items_file, col_types = raw_moral_items_colSpec) %>%
+  select(ShortText,Topic,Subtopic,Statement) 
+
+db_moral <- d %>%
+  select(Subject, UserName,
+         Anomie...People.think.that.there.are.no.clear.moral.standards.to.follow., 
+         Anomie...Everyone.thinks.of.himself.herself.and.does.not.help.others.in.need., 
+         Anomie...Most.people.think.that.if.something.works..it.doesn.t.really.matter.whether.it.is.right.or.wrong., 
+         Anomie...People.do.not.know.who.they.can.trust.and.rely.on., 
+         Anomie...Most.people.think.that.honesty.doesn.t.work.all.the.time..dishonesty.is.sometimes.a.better.approach.to.get.ahead., 
+         Anomie...People.are.cooperative., 
+         Anomie...The.government.works.towards.the.welfare.of.people., 
+         Anomie...The.government.is.legitimate., 
+         Anomie...The.government.uses.its.power.legitimately., 
+         Anomie...Politicians.don.t.care.about.the.problems.of.average.person., 
+         Anomie...The.government.laws.and.policies.are.effective., 
+         Anomie...Some.laws.are.not.fair.,
+         MoralAttach...People.who.oppose.my.stances.on.important.moral.issues.are.bad.people.,
+         MoralAttach...Those.who.disagree.with.my.stance.on.important.moral.issues.are.morally.corrupt.,
+         MoralAttach...People.who.hold.different.views.to.me.on.important.moral.issues.are.ignorant.,
+         MoralAttach...I.view.those.who.hold.opposing.beliefs.about.important.moral.issues.as.morally.misguided.,
+         MoralAttach...I.consider.those.who.do.not.share.my.beliefs.about.important.moral.issues.as.lacking.moral.integrity.,
+         MoralAttach...I.can.become.angry.or.upset.when.my.beliefs.about.important.moral.issues.are.questioned.by.others.,
+         MoralAttach...I.have.strong.emotional.reactions..such.as.anger.or.frustration..when.my.beliefs.about.important.moral.issues.are.opposed.,
+         MoralAttach...I.feel.a.sense.of.outrage.when.my.beliefs.about.important.moral.issues.are.disagreed.with.,
+         MoralAttach...I.feel.personally.attacked.when.someone.challenges.my.beliefs.on.important.moral.issues.,
+         MoralAttach...I.often.react.emotionally.and.passionately.when.discussing.or.debating.important.moral.issues.,
+         MoralAttach...I.am.certain.about.my.stance.on.important.moral.issues.,
+         MoralAttach...I.have.no.doubts.about.my.beliefs.on.important.moral.issues.,
+         MoralAttach...There.is.nothing.that.can.change.my.stance.on.important.moral.issues.,
+         MoralAttach...My.beliefs.on.important.moral.issues.cannot.be.changed.,
+         MoralAttach...My.views.on.important.moral.issues.may.not.stand.the.test.of.time.,
+         ClimateMorals.......connected.to.your.beliefs.about.fundamental.right.and.wrong.,
+         ClimateMorals.......a.reflection.of.your.core.moral.beliefs.and.convictions.,
+         ClimateMorals.......based.on.moral.principle.,
+         ClimateMorals.......a.moral.stance., 
+         ClimateStrength,
+         AIMorals.......connected.to.your.beliefs.about.fundamental.right.and.wrong.,
+         AIMorals.......a.reflection.of.your.core.moral.beliefs.and.convictions.,
+         AIMorals.......based.on.moral.principle.,
+         AIMorals.......a.moral.stance.,
+         AIStrength,
+         TransMorals.......connected.to.your.beliefs.about.fundamental.right.and.wrong.,
+         TransMorals.......a.reflection.of.your.core.moral.beliefs.and.convictions.,
+         TransMorals.......based.on.moral.principle.,
+         TransMorals.......a.moral.stance.,
+         TransStrength,
+         IsraelMoral.......connected.to.your.beliefs.about.fundamental.right.and.wrong.,
+         IsraelMoral.......a.reflection.of.your.core.moral.beliefs.and.convictions.,
+         IsraelMoral.......based.on.moral.principle.,
+         IsraelMoral.......a.moral.stance.,
+         IsraelStrength,
+         Punishment...post.online.about.them.,
+         Punishment...gossip.about.it.to.my.friends.,
+         Punishment...exclude.them.from.social.gatherings.,
+         Punishment...be.cold.towards.them.,
+         SubjectiveInequality...Very.poor,
+         SubjectiveInequality...Poor,
+         SubjectiveInequality...Average.in.wealth,
+         SubjectiveInequality...Wealthy,
+         SubjectiveInequality...Very.wealthy,
+         Polarisation...I.feel.threatened.by.the.level.of.disagreement.on.social.and.political.issues.in.my.society.,
+         Polarisation...The.level.of.disagreement.on.social.and.political.issues.in.my.society.makes.me.feel.like.I.personally.don.t.have.control.,
+         StatusSeeking...You.get.respect.from.others.,
+         StatusSeeking...People.do.what.you.say.,
+         StatusSeeking...You.show.your.abilities.,
+         StatusSeeking...People.admire.what.you.do.,
+         StatusSeeking...You.are.successful.,
+         StatusSeeking...People.recognise.your.achievements.) %>%
+  rename(Anomie1 = Anomie...People.think.that.there.are.no.clear.moral.standards.to.follow., 
+         Anomie2 = Anomie...Everyone.thinks.of.himself.herself.and.does.not.help.others.in.need., 
+         Anomie3 = Anomie...Most.people.think.that.if.something.works..it.doesn.t.really.matter.whether.it.is.right.or.wrong., 
+         Anomie4 = Anomie...People.do.not.know.who.they.can.trust.and.rely.on., 
+         Anomie5 = Anomie...Most.people.think.that.honesty.doesn.t.work.all.the.time..dishonesty.is.sometimes.a.better.approach.to.get.ahead., 
+         Anomie6 = Anomie...People.are.cooperative., 
+         Anomie7 = Anomie...The.government.works.towards.the.welfare.of.people., 
+         Anomie8 = Anomie...The.government.is.legitimate.,
+         Anomie9 = Anomie...The.government.uses.its.power.legitimately., 
+         Anomie10 = Anomie...Politicians.don.t.care.about.the.problems.of.average.person., 
+         Anomie11 = Anomie...The.government.laws.and.policies.are.effective., 
+         Anomie12 = Anomie...Some.laws.are.not.fair.,
+         MoralAttachment1 = MoralAttach...People.who.oppose.my.stances.on.important.moral.issues.are.bad.people.,
+         MoralAttachment2 = MoralAttach...Those.who.disagree.with.my.stance.on.important.moral.issues.are.morally.corrupt.,
+         MoralAttachment3 = MoralAttach...People.who.hold.different.views.to.me.on.important.moral.issues.are.ignorant.,
+         MoralAttachment4 = MoralAttach...I.view.those.who.hold.opposing.beliefs.about.important.moral.issues.as.morally.misguided.,
+         MoralAttachment5 = MoralAttach...I.consider.those.who.do.not.share.my.beliefs.about.important.moral.issues.as.lacking.moral.integrity.,
+         MoralAttachment6 = MoralAttach...I.can.become.angry.or.upset.when.my.beliefs.about.important.moral.issues.are.questioned.by.others.,
+         MoralAttachment7 = MoralAttach...I.have.strong.emotional.reactions..such.as.anger.or.frustration..when.my.beliefs.about.important.moral.issues.are.opposed.,
+         MoralAttachment8 = MoralAttach...I.feel.a.sense.of.outrage.when.my.beliefs.about.important.moral.issues.are.disagreed.with.,
+         MoralAttachment9 = MoralAttach...I.feel.personally.attacked.when.someone.challenges.my.beliefs.on.important.moral.issues.,
+         MoralAttachment10 = MoralAttach...I.often.react.emotionally.and.passionately.when.discussing.or.debating.important.moral.issues.,
+         MoralAttachment11 = MoralAttach...I.am.certain.about.my.stance.on.important.moral.issues.,
+         MoralAttachment12 = MoralAttach...I.have.no.doubts.about.my.beliefs.on.important.moral.issues.,
+         MoralAttachment13 = MoralAttach...There.is.nothing.that.can.change.my.stance.on.important.moral.issues.,
+         MoralAttachment14 = MoralAttach...My.beliefs.on.important.moral.issues.cannot.be.changed.,
+         MoralAttachment15 = MoralAttach...My.views.on.important.moral.issues.may.not.stand.the.test.of.time.,
+         Mor_Convic_ClimateChange_Beliefs = ClimateMorals.......connected.to.your.beliefs.about.fundamental.right.and.wrong.,
+         Mor_Convic_ClimateChange_Core = ClimateMorals.......a.reflection.of.your.core.moral.beliefs.and.convictions.,
+         Mor_Convic_ClimateChange_Principle = ClimateMorals.......based.on.moral.principle.,
+         Mor_Convic_ClimateChange_Stance = ClimateMorals.......a.moral.stance., 
+         AttStrength_ClimateChange = ClimateStrength,
+         Mor_Convic_AI_Beliefs = AIMorals.......connected.to.your.beliefs.about.fundamental.right.and.wrong.,
+         Mor_Convic_AI_Core = AIMorals.......a.reflection.of.your.core.moral.beliefs.and.convictions.,
+         Mor_Convic_AI_Principle = AIMorals.......based.on.moral.principle.,
+         Mor_Convic_AI_Stance = AIMorals.......a.moral.stance.,
+         AttStrength_AI = AIStrength,
+         Mor_Convic_Trans_Beliefs = TransMorals.......connected.to.your.beliefs.about.fundamental.right.and.wrong.,
+         Mor_Convic_Trans_Core = TransMorals.......a.reflection.of.your.core.moral.beliefs.and.convictions.,
+         Mor_Convic_Trans_Principle = TransMorals.......based.on.moral.principle.,
+         Mor_Convic_Trans_Stance = TransMorals.......a.moral.stance.,
+         AttStrength_Trans = TransStrength,
+         Mor_Convic_IsraelHamas_Beliefs = IsraelMoral.......connected.to.your.beliefs.about.fundamental.right.and.wrong.,
+         Mor_Convic_IsraelHamas_Core = IsraelMoral.......a.reflection.of.your.core.moral.beliefs.and.convictions.,
+         Mor_Convic_IsraelHamas_Principle = IsraelMoral.......based.on.moral.principle.,
+         Mor_Convic_IsraelHamas_Stance = IsraelMoral.......a.moral.stance.,
+         AttStrength_IsraelHamas = IsraelStrength,
+         SocialPunishment_Online = Punishment...post.online.about.them.,
+         SocialPunishment_Gossip = Punishment...gossip.about.it.to.my.friends.,
+         SocialPunishment_Exclude = Punishment...exclude.them.from.social.gatherings.,
+         SocialPunishment_Cold = Punishment...be.cold.towards.them.,
+         PerceivedInequalityVeryPoor = SubjectiveInequality...Very.poor,
+         PerceivedInequalityPoor = SubjectiveInequality...Poor,
+         PerceivedInequalityAverage = SubjectiveInequality...Average.in.wealth,
+         PerceivedInequalityWealthy = SubjectiveInequality...Wealthy,
+         PerceivedInequalityVeryWealthy = SubjectiveInequality...Very.wealthy,
+         PolThreat2 = Polarisation...I.feel.threatened.by.the.level.of.disagreement.on.social.and.political.issues.in.my.society.,
+         PolThreat1 = Polarisation...The.level.of.disagreement.on.social.and.political.issues.in.my.society.makes.me.feel.like.I.personally.don.t.have.control.,
+         StatusSeekingRespect = StatusSeeking...You.get.respect.from.others.,
+         StatusSeekingControl = StatusSeeking...People.do.what.you.say.,
+         StatusSeekingShowAbility = StatusSeeking...You.show.your.abilities.,
+         StatusSeekingAdmire = StatusSeeking...People.admire.what.you.do.,
+         StatusSeekingSuccess = StatusSeeking...You.are.successful.,
+         StatusSeekingRecognition = StatusSeeking...People.recognise.your.achievements.)
+
+# convert attribute variables to numbers
+db_moral <- db_moral %>%
+  mutate(AttStrength_AI = case_when(
+    AttStrength_AI=="Extremely strong" ~ "5",
+    AttStrength_AI=="Very strong" ~ "4",
+    AttStrength_AI=="Moderately strong" ~ "3",
+    AttStrength_AI=="Slightly strong" ~ "2",
+    AttStrength_AI=="Not at all strong" ~ "1",
+    TRUE~NA)) %>%
+  mutate(AttStrength_Trans = case_when(
+    AttStrength_Trans=="Extremely strong" ~ "5",
+    AttStrength_Trans=="Very strong" ~ "4",
+    AttStrength_Trans=="Moderately strong" ~ "3",
+    AttStrength_Trans=="Slightly strong" ~ "2",
+    AttStrength_Trans=="Not at all strong" ~ "1",
+    TRUE~NA)) %>%
+  mutate(AttStrength_ClimateChange = case_when(
+    AttStrength_ClimateChange=="Extremely strong" ~ "5",
+    AttStrength_ClimateChange=="Very strong" ~ "4",
+    AttStrength_ClimateChange=="Moderately strong" ~ "3",
+    AttStrength_ClimateChange=="Slightly strong" ~ "2",
+    AttStrength_ClimateChange=="Not at all strong" ~ "1",
+    TRUE~NA)) %>%  
+  mutate(AttStrength_IsraelHamas = case_when(
+    AttStrength_IsraelHamas=="Extremely strong" ~ "5",
+    AttStrength_IsraelHamas=="Very strong" ~ "4",
+    AttStrength_IsraelHamas=="Moderately strong" ~ "3",
+    AttStrength_IsraelHamas=="Slightly strong" ~ "2",
+    AttStrength_IsraelHamas=="Not at all strong" ~ "1",
+    TRUE~NA))
+
+# make long
+db_moral <- db_moral %>%
+  pivot_longer(cols=-c(Subject,UserName),names_to="ShortText",
+               values_to = "Response")
+
+# combine with stimulus set
+db_moral <- db_moral %>%
+  left_join(morality_items,by="ShortText")
+
+# recode variables
+db_moral <- db_moral %>%
+  mutate(Response = as.numeric(str_remove_all(Response, "[A-Za-z]"))) %>%
+  mutate(Condition = conditionName,
+         TimePoint = "Before") %>%
+  select(Subject,UserName,Condition,TimePoint,ShortText,Response,
+         Topic,Subtopic,Statement)
+
+# write the file
+processed_before_moral_colSpec <- cols(.default = "c")
+processed_before_moral_file <- here(processed_files_mastodon_dir,
+                                  tolower(conditionName),
+                                  "data_before_morality.csv")
+
+db_moral %>% save_processed_file(file = processed_before_moral_file)
+```
+
+## One massive dataset to rule them all
+
+It's handy to have the different questions broken down into different datasets as I've done because often one format is good for one dataset while it's not for another (e.g., long makes more sense for the priors so each row can be a claim, but wide makes sense for demographics so each row can be a person).
+
+That said, it can also be handy to create a single dataset that has only the most key variables -- this is most tractable especially for honours students (to not get lost in complexity). That is described below. 
+
+### data_before_all.csv
+
+The dataframe this corresponds to is `db_all`. Each row corresponds to one participant, and the columns are:
+
+**Subject**: the ID number corresponding to that participant
+
+**UserName**: the username that person had on Magpie Social. NA if they didn't end up participating on Magpie Social
+
+**Condition**: the condition these participants are in (i.e., Control or Right or Left). All participants are the same (set using the variable at the top of the Markdown; having this variable in the data will make it easier to combine files later)
+
+**TimePoint**: the time point this survey corresponds to (which in this case is Before); having this variable in the data will make it easier to combine files later
+
+**LAT**: The latitude coordinates as reported by Qualtrics, rounded to the nearest integer to preserve anonymity. 
+
+**LON**: The latitude coordinates as reported by Qualtrics, rounded to the nearest integer to preserve anonymity. 
+
+**Age**: Their self-reported age in years.
+
+**Sex**: Their self-reported sex at birth: *male*, *female*, *other* (which includes both intersex and other)
+
+**Gender**: Their self-reported gender: *male*, *female*, *nbqueer* (which includes both non-binary and genderqueer), and *other*
+
+**Trans**: This is coded as 1 if their gender is *nbqueer* or *other*, or their self-reported gender does not match their sex assigned at birth. Anything else indicates a cis person, which is coded as 0. This is of particular interest given that one of the topics is Trans issues.
+
+**LGBT**: This is coded as 1 if their sexual orientation is anything other than straight or they are trans. Anything else is 0, indicating someone who is not a part of the LGBT. This is of particular interest given that one of the topics is Trans issues.
+
+**English**: Their self-reported Rating of English fluency: *native*, *good* (which includes both fluent and proficient), and *poor* (which includes conversational and beginner)
+
+**Education**: Their self-reported education level: *highschool* (which includes people who haven't graduated from high school, people with only a high school degree, and people with only a GED), *somecollege* (which includes people who have done some uni but not completed it for a degree, or have a TAFE/Vocational/Associates degree), *undergrad* (these are people with a university bachelor's degree but no higher), *postgrad* (this includes all of the various postgrad and professional degrees, like master's, professional, and phd)
+
+**Race**: The race question allowed people to select multiple races/ethnicities, which made for tricky coding. I coded people as *multiracial* if they fell into more than one of the following categories, and otherwise as the categories themselves:  *white* (includes White or Caucasian), *black* (includes African or Black), *mideast* (includes Middle Eastern, Arab, Palestinian), *indian* (meaning the subcontinent), *asian* (includes Asian, Japanese, Chinese, Korean), *hispanic* (includes Hispanic, Latin American), and *other* (includes Native American, Indigenous, Pacific Islander, Other).
+
+**RaceMidEast**: This is 1 if the person selected Middle Eastern, Arab, or Palestinian, and 0 otherwise. The reason I calculated this variable (i.e., that it's not just a duplicate of **Race**) is that some multiracial people might have included middle eastern descent and some might not have. Those who included it would be called 1 according to the MidEast variable even though they are coded as *multiracial* in Race. This is of particular interest given that one of the topics is Israel/Palestine.
+
+**Religion**: Self-reported religious tradition: *christian* (includes Protestant, Catholic, and Eastern Orthodox), *mormon*, *jewish*, *eastern* (includes Buddhist and Hindu), *muslim*, *other* (includes Pagan and Other), and *none* (includes Agnostic and Atheist)
+
+**PoliticalIDNum**: Answers to their self-rated political identification: 6 = strong Republican, 5 = Republican, 4 = slight Republican; 3 = independent; 2 = slight Democrat, 1 = Democrat, 0 = strong Democrat
+
+**PoliticalID**: A more categorical measure of political identification: *democrat* (PoliticalIDNum answers from 0 to 2), *republican* (from 4 to 6), and *independent* (a 3)
+
+**Belief**: This is that person's mean Belief for all of the 48 claims taken together. Remember that Belief is set so that values closer to 0 can be interpreted as agreeing with the left viewpoint and values closer to 100 can be interpreted as agreeing with the right. This variable therefore reflects their general left/right tendency on this issue. It can be used as an overall measure of the population's beliefs.
+
+**BeliefTrans**: This is the mean Belief for that person for all six of the Trans-related claims. 
+
+**BeliefAI**: This is the mean Belief for that person for all six of the AI-related claims. 
+
+**BeliefIsrael**: This is the mean Belief for that person for all six of the Israel-related claims. 
+
+**BeliefClimate**: This is the mean Belief for that person for all six of the Climate-related claims. 
+
+**ExtremeBelief**: This is that person's mean ExtremeBelief for all of the 48 claims taken together. Remember that ExtremeBelief is set so that a 0 indicates they are exactly in the middle (i.e., they chose 50%) and other numbers indicate the distance from zero (thus a 50 would mean the person chose either 0% or 100%). It is a good measure of belief polarisation. 
+
+**ExtremeBeliefTrans**: This is the mean ExtremeBelief for that person for all six of the Trans-related claims. 
+
+**ExtremeBeliefAI**: This is the mean ExtremeBelief for that person for all six of the AI-related claims. 
+
+**ExtremeBeliefIsrael**: This is the mean ExtremeBelief for that person for all six of the Israel-related claims. 
+
+**ExtremeBeliefClimate**: This is the mean ExtremeBelief for that person for all six of the Climate-related claims. 
+
+**WVSTrust**: Their answer to the trust question taken from the World Values Survey ("Generally speaking, would you say that most people can be trusted or that you need to be very careful in dealing with people?"). Answers were coded as *trust* (Most people can be trusted), *distrust* (Need to be very careful), and *dontknow*
+
+**TrustOverall**: This is the average of the five Trust variables above, giving a measure of people's overall trust on a scale from 0 to 100.
+
+**RepThermometer**: People were asked to rate their feelings towards Republicans on a scale of 0 to 100, where 0 is "very unfavourable", 100 is "very favourable", and 50 is neutral.
+
+**DemThermometer**: People were asked to rate their feelings towards Democrats on a scale of 0 to 100, where 0 is "very unfavourable", 100 is "very favourable", and 50 is neutral.
+
+**AffPol**: This is a measure of affective polarisation which is abs(RepThermometer-DemThermometer). A zero indicates that they feel the same towards Republicans and Democrats, i.e., no affective polarisation at all. Higher numbers indicate higher affective polarisation, with 100 being the most (meaning either they love Democrats (DemThermometer=100) and hate Republicans (RepThermometer=0) or they love Republicans (RepThermometer=100) and hate Democrats (DemThermometer=0)).
+
+**RepNeg**: This is the average of the responses to the three negative emotions about Republicans (RepAngry, RepContempt, RepFear).
+
+**RepPos**: This is the average of the responses to the three positive emotions about Republicans (RepAdmire, RepEnthusiastic, RepPride).
+
+**DemNeg**: This is the average of the responses to the three negative emotions about Democrats (DemAngry, DemContempt, DemFear).
+
+**DemPos**: This is the average of the responses to the three positive emotions about Democrats (DemAdmire, DemEnthusiastic, DemPride).
+
+**RepAngry, RepContempt, RepAdmire, RepFear, RepEnthusiastic, RepPride**: These are their Ratings of each of these emotions toward Republicans (with 0 indicating that they don't have them at all, and 100 indicating that they very much do).
+
+**DemAngry, DemContempt, DemAdmire, DemFear, DemEnthusiastic, DemPride**: These are their Ratings of each of these emotions toward Democrats (with 0 indicating that they don't have them at all, and 100 indicating that they very much do).
+
+**RelativePolitics**: This is people's self-classified level of belief polarisation ("Where would you classify your overall political beliefs, relative to most people in the US?"). Here, 0 means far to the left and 100 means far to the right.
+
+**RelativeAI, RelativeClimate, RelativeIsrael, RelativeTrans**: Same question about classifying their political beliefs relative to the population, but this time focused on each of the four main topics. 
+
+**ConsensusPolitics**: This is a measure of people's inferences about how much belief polarisation they think there is. Might be interesting to compare to our actual measures of belief polarisation! The question was "To what extent do you think that most people in the US generally agree with each other about their overall political beliefs?" and answers range from 0 to 100, with 0 meaning no agreement and 100 meaning complete agreement.
+
+**ConsensusAI, ConsensusClimate, ConsensusIsrael, ConsensusTrans**: Same question about classifying their political beliefs relative to the population, but this time focused on each of the four main topics. 
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+db_all <- d_demo %>%
+  select(Subject, UserName, Condition, TimePoint, 
+         LON, LAT, Age, Sex, Gender, Trans,
+         LGBT, English, Education, Race, RaceMidEast, Religion, 
+         PoliticalID, PoliticalIDNum)
+
+dp_belief <- dp_sum %>%
+  filter(Topic=="AI" | Topic=="Israel" | Topic=="Climate" |
+           Topic=="Trans" | Topic=="Total") %>%
+  select(Subject,Topic,mnBelief) %>%
+  pivot_wider(names_from="Topic",values_from=mnBelief) %>%
+  rename(BeliefAI = AI, BeliefIsrael = Israel,
+         BeliefClimate = Climate, BeliefTrans = Trans,
+         Belief = Total)
+
+dp_extreme <- dp_sum %>%
+  filter(Topic=="AI" | Topic=="Israel" | Topic=="Climate" |
+           Topic=="Trans" | Topic=="Total") %>%
+  select(Subject,Topic,mnExtremeBelief) %>%
+  pivot_wider(names_from="Topic",values_from=mnExtremeBelief) %>%
+  rename(ExtremeBeliefAI = AI, ExtremeBeliefIsrael = Israel,
+         ExtremeBeliefClimate = Climate, ExtremeBeliefTrans = Trans,
+         ExtremeBelief = Total)
+
+dp_all <- dp_belief %>%
+  left_join(dp_extreme,by="Subject")
+
+db_all <- db_all %>%
+  left_join(dp_all,by="Subject")
+
+temp_trust <- db_trust %>%
+  select(Subject, WVSTrust, TrustOverall, RepThermometer, 
+         DemThermometer, AffPol, RepNeg, RepPos, DemNeg, DemPos,
+         RepAngry,RepContempt, RepAdmire, RepFear, 
+         RepEnthusiastic, RepPride, DemAngry, DemContempt, 
+         DemAdmire, DemFear, DemEnthusiastic, DemPride,
+         RelativePolitics, RelativeAI, RelativeTrans, 
+         RelativeClimate, RelativeIsrael, ConsensusPolitics,
+         ConsensusAI, ConsensusTrans, ConsensusClimate,
+         ConsensusIsrael)
+
+db_all <- db_all %>%
+  left_join(temp_trust,by="Subject")
+
+# write the file
+processed_before_all_colSpec <- cols(.default = "c")
+processed_before_all_file <- here(processed_files_mastodon_dir,
+                                  tolower(conditionName),
+                                  "data_before_all.csv")
+
+db_all %>% save_processed_file(file = processed_before_all_file)
+```

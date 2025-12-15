@@ -1,0 +1,963 @@
+---
+title: "Cleaning the After Survey data"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+rm(list=ls())
+library(tidyverse)
+library(here)
+
+conditionName <- "Left"
+DRY_RUN <- FALSE
+
+if (conditionName=="Control") {
+   folder <- "control/"
+} else if (conditionName=="Right") {
+  folder <- "right/"
+} else {
+  folder <- "left/"
+}
+```
+
+```{r}
+raw_magpie_dir <- "data/magpie/original"
+processed_magpie_dir <- "data/magpie/processed"
+raw_files_mastodon_dir <- "data/mastodon/files/raw"
+processed_files_mastodon_dir <- "data/mastodon/files/processed"
+```
+
+```{r}
+save_processed_file = function(data, file, dry_run = DRY_RUN) {
+  if (! dry_run) {
+    # create the directory if it does not exist
+    dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+    cat("saving to: ", file)
+    write_csv(data, file=file)
+  } else {
+    cat("(dry_run) skipping saving to: ", file)
+  }
+}
+```
+
+We always begin with the raw data straight from Qualtrics. As a rule we never change the raw data, but we can make data files that are much more nicely organised and use them instead. The information below details the key data files and variables in them, but you can look at the code in the Markdown for clarification if anything is unclear.
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+raw_names_colSpec <- cols(.default = "c")
+raw_names_file <- here(raw_files_mastodon_dir,
+                       tolower(conditionName),
+                       paste0("names", tolower(conditionName), ".csv"))
+
+names <- read_csv(file = raw_names_file, col_types = raw_names_colSpec)
+
+raw_before_colSpec <- cols(.default = "c")
+raw_before_file <- here(raw_files_mastodon_dir,
+                       tolower(conditionName),
+                       paste0(tolower(conditionName), "After.csv"))
+
+d_raw <- read_csv(file = raw_before_file, col_types = raw_before_colSpec)
+
+# get rid of the first row which is Qualtrics crap
+# need to manually remove the heading to make this work
+d_raw <- d_raw[2:nrow(d_raw),]
+# remove spaces in names, they are annoying
+d_raw <- d_raw %>% rename_with(make.names)
+
+# rename some variables so they aren't annoying
+# may want to exchange MID and Subject in the real one
+d <- d_raw %>%
+  rename(Duration = Duration..in.seconds.,
+         LAT = Location.Latitude,
+         LON = Location.Longitude,
+         ProlificID = PROLIFIC_PID)  %>%
+  # remove potentially identifying and unnecessary info
+  select(-c(IP.Address,Recipient.First.Name,Recipient.Last.Name,
+            Recipient.Email,version,id,
+            Progress,Finished,Recorded.Date,
+            External.Data.Reference,Distribution.Channel,
+            User.Language,Q_RecaptchaScore,
+            Q_RelevantIDDuplicate,Q_RelevantIDDuplicateScore,
+            Q_RelevantIDFraudScore,Q_RelevantIDLastStartDate)) %>%
+  mutate(LAT = round(as.numeric(LAT)),
+         LON = round(as.numeric(LON))) %>%
+  mutate(CheckCorr = case_when(
+    CheckQuestion > 29 & CheckQuestion < 40 ~ 1,
+    TRUE ~ 0)) %>%
+  mutate(Condition = conditionName,
+         TimePoint = "After") %>%
+  left_join(names,by="ProlificID") %>%
+  select(-c(ProlificID,STUDY_ID,SESSION_ID,Random.ID))
+
+# remove people who didn't get the check question correct
+# or have NA for LAT and LON
+d_bad <- d %>%
+  filter(CheckCorr==0 | is.na(LON) | is.na(LAT) | is.na(Subject))
+
+d <- d %>%
+  filter(CheckCorr==1 & !is.na(LON) & !is.na(LAT) & !is.na(Subject))
+
+# write the full data file
+processed_after_colSpec <- cols(.default = "c")
+processed_after_file <- here(processed_files_mastodon_dir,
+                             tolower(conditionName),
+                             "alldata_after_raw.csv")
+
+d %>% save_processed_file(file = processed_after_file)
+
+processed_bad_after_file <- here(processed_files_mastodon_dir,
+                             tolower(conditionName),
+                             "baddata_after_raw.csv")
+
+d_bad %>% save_processed_file(file = processed_bad_after_file)
+```
+
+## Demographic data
+
+Since this is the After survey, there isn't much here.
+
+### data_demographics_after.csv
+
+The dataframe this corresponds to is `d_demo` and it has very little info because we didn't ask all of the demographic questions again. Nevertheless it is worth recording the latitute/longitude (in case we want to see if it changed) and also how long it took them to do this. 
+
+**Subject**: the ID number corresponding to that participant
+
+**UserName**: the username that person had on Magpie Social.
+
+**Condition**: the condition these participants are in (i.e., Control or Troll). All participants are the same (set using the variable at the top of the Markdown; having this variable in the data will make it easier to combine files later)
+
+**TimePoint**: the time point this survey corresponds to (which in this case is After); having this variable in the data will make it easier to combine files later
+
+**LAT**: The latitude coordinates as reported by Qualtrics, rounded to the nearest integer to preserve anonymity. 
+
+**LON**: The latitude coordinates as reported by Qualtrics, rounded to the nearest integer to preserve anonymity. 
+
+**Duration**: This is how long it took them (in minutes) to do the experiment. Note that this is the time from opening it to submitting, not necessarily the time on task if they went off and did something else in the middle. But still gives a decent approximation to time spent.
+
+**CheckCorr**: This is 1 if the person got the check question correct (which asked them to put in a number between 70 and 80). People who got it incorrect should not be in the dataset (they are saved in the `baddata_raw.csv` file if you want to find them) so this is just a sanity check to make sure.
+
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+### DEMOGRAPHIC DATA
+d_demo <- d %>%
+  select(Subject,UserName,Condition,TimePoint,LAT,LON,Duration,CheckCorr)
+
+# write the file
+processed_demo_colSpec <- cols(.default = "c")
+processed_demo_file <- here(processed_files_mastodon_dir,
+                            tolower(conditionName),
+                            "data_after_demographics.csv")
+
+d_demo %>% save_processed_file(file = processed_demo_file)
+```
+
+## Posterior beliefs data
+
+Make a dataset with all of the posterior belief data.
+
+### data_posteriors_long.csv
+
+The dataframe this corresponds to is `d_posteriors_long` and it has all of the information about the prior belief ratings on each of the 49 beliefs (does not include the check question). Each row corresponds to one participant with one belief, and the columns are:
+
+**Subject**: the ID number corresponding to that participant
+
+**UserName**: the username that person had on Magpie Social.
+
+**Condition**: the condition these participants are in (i.e., Control or Troll). All participants are the same (set using the variable at the top of the Markdown; having this variable in the data will make it easier to combine files later)
+
+**TimePoint**: the time point this survey corresponds to (which in this case is After); having this variable in the data will make it easier to combine files later
+
+**Topic**: This is a one-word description of the topic of the claim. Includes the four main topics (`Israel`, `Trans`, `AI`, and `Climate`) but also several others (`Ukraine`, `Tech`, `Environment`, `Gender`, and `Fun`) which were chosen to span a nice range of beliefs and allow us to look at spillover. 
+
+**ShortText**: This is just a short description of what that claim is. So for instance  `TransAcceptanceGood` corresponds to the statement "Transgender identities should be as socially acceptable as religious or ethnic identities". These descriptions can be found in the `claims-list.csv` dataset and thus changed there if you want.
+
+**Polarity**: These are classified as `left` if we thought people more on the political left would endorse them, `right` if the other direction, and `neutral` for the Fun items. For AI we assumed that pro-AI was `right` and for Israel we assumed that pro-Israel was `right`, but we expect these to be fairly weak trends if there at all.
+
+**RawBelief**: This is the belief rating that participant gave to them, where 0 means `Don't agree at all` and 100 means `100% agree`
+
+**Belief**: This is a transformation of the RawBelief, so that values closer to 0 can be interpreted as agreeing with the left viewpoint and values closer to 100 can be interpreted as agreeing with the right. It was calculated by taking all the claims with polarity of "left" and setting Belief = abs(RawBelief-100). So, e.g., if someone agreed 30% with a left claim, that would have a Belief of 70, meaning, they are closer to the right than the left. And if they agree 100% with a left claim, it would have a Belief of 0, meaning they completely agree with the left viewpoint. Claims with a polarity of "right" were not changed.
+
+**ExtremeBelief**: This is a transformation of Belief, so that values can be interpreted as the extremity of one's beliefs. It was calculated as ExtremeBelief = abs(Belief-50). Thus a value of 0 means the person selected 50, i.e., they are right in the middle. A value of 20 indicates that the person was 20 away from 50, which could be either 70% or 30%. The largest value possible is 50 (corresponding to 0% or 100%), indicating maximum extremity.
+
+**Order**: This is an ordering so topics go together; nice for viewing graphs later
+
+**Code**: Not sure you'll use this, it's just a short letter-number code for each claim, e.g., T1 is one of the Trans claims, T2 is another, etc.
+
+**Claim**: This is the full text of the claim being rated
+
+### data_summary_posteriors.csv
+
+The dataframe this corresponds to is `dp_sum` and it has summary information for each subject for each of the topics (e.g., Trans, AI, etc). Each row corresponds to one participant with one topic, and the columns are:
+
+**Subject**: the ID number corresponding to that participant
+
+**UserName**: the username that person had on Magpie Social.
+
+**Condition**: the condition these participants are in (i.e., Control or Troll). All participants are the same (set using the variable at the top of the Markdown; having this variable in the data will make it easier to combine files later)
+
+**TimePoint**: the time point this survey corresponds to (which in this case is After); having this variable in the data will make it easier to combine files later
+
+**Topic**: This is a one-word description of the topic of the claim. Includes the four main topics (`Israel`, `Trans`, `AI`, and `Climate`) but also several others (`Ukraine`, `Tech`, `Environment`, `Gender`, and `Fun`) which were chosen to span a nice range of beliefs and allow us to look at spillover. 
+
+**mnBelief**: This is the mean Belief (see above) for that person for all of the claims on that Topic. Remember that Belief is set so that values closer to 0 can be interpreted as agreeing with the left viewpoint and values closer to 100 can be interpreted as agreeing with the right. This variable therefore reflects their general left/right tendency on that topic. E.g. if there were four claims in a topic, and their Rating on the claims were 25, 30, 50, and 55, then mnBelief would be 40. Note that one of the topics is called "Total"; this is their mean Belief for all topics combined - i.e., a measure of how left/right their beliefs as a whole are (note that the check question and the fun question are excluded).
+
+**sdBelief**: The standard deviation of the mean Belief for that topic.
+
+**n**: The number of datapoints feeding into the mnBelief and sdBelief Should be 6 for the four central topics, 4 for the "spillover" ones, 2 for the extras, and 48 in Total (again, fun and the check question are excluded)
+
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+raw_items_colSpec <- cols(.default = "c")
+raw_items_file <- here(raw_files_mastodon_dir,
+                       "claims-list.csv")
+
+items <- read_csv(file = raw_items_file, col_types = raw_items_colSpec)
+
+# extract the key variables and convert to long form
+d_posteriors_long <- d %>%
+  select(Subject, UserName,TransUndermineWomen, DogsBetterThanCats, ExactlyTwoGenders, BathroomLawsIneffective, FewTransPeopleChangeMind, NoTransHealthcareMinors, TransRightsShouldBePriority, JobLossFromAIWillBeHuge, AISurveillanceIsANetGood, AIWarfareEthicallyUnacceptable, AIRegulationTooLimiting, EmphasisOnAIBadForPeople, IndividualMedicineAIGood, PalestinesClaimsLegitimate, IsraelNeedsStrongResponse, IsraelViolatedPalestineRights, IsraelSupportedBcUniqueNeeds, MediaIgnoresPalestineSuffering, IsraelCriticismAntisemitic, ClimateShouldDelaySpend, ClimateScientistsAgree, GovtShouldSetClimateAgenda, IndustrySolveEnvironProblems, ClimateChangeRiskHealth, ClimateChangeIsGood, SystemicGenderBiasIsReal, MenLeadersWomenNurturers, SocMediaConnectMarginalised, DigitalRegsViolateFreedoms, MilitaryAidToUkraineNeeded, UkraineShouldCedeTerritory, IndividActsNotEnoughEnviron, EnvironRegsGoTooFar, IAmConcernedEnviron, WorryTooMuchEnviron, MustBreakFromTradition, TechFreeMarketAdvanceHumanity, TooMuchMilitarySpending, ShouldLimitImmigration, GovtShouldReduceInequality, IncomeTaxTooHigh, DefundPoliceMoreSocialSpending, GunsAvailableWithoutPermit, LessReligiousInfluenceGood, GovtShouldBeChristian, GovtHealthSpendingLow, VaccinesUntrustworthy, PreMaritalSexWrong,GayMarriageOK) %>%
+  pivot_longer(cols=-c(Subject,UserName),
+               names_to="ShortText",values_to="RawBelief") %>%
+  mutate(RawBelief = as.numeric(RawBelief)) %>%
+  left_join(items, by=join_by(ShortText))
+
+# create new useful variables
+d_posteriors_long <- d_posteriors_long %>%
+  mutate(Belief = case_when(
+    Polarity=="left" ~ abs(100-RawBelief),
+    TRUE~RawBelief)) %>%
+  mutate(ExtremeBelief = abs(Belief-50)) %>%
+  mutate(Condition = conditionName,
+         TimePoint = "After")
+
+
+# put in a sensible order
+d_posteriors_long <- d_posteriors_long %>%
+  select(Subject,UserName,Condition,TimePoint,Topic,ShortText,Polarity,
+         Belief,ExtremeBelief,RawBelief,Order,Code,Claim)
+
+# write the file
+processed_posteriors_long_colSpec <- cols(.default = "c")
+processed_posteriors_long_file <- here(processed_files_mastodon_dir,
+                                   tolower(conditionName),
+                                   "data_posteriors_long.csv")
+
+d_posteriors_long %>% save_processed_file(file = processed_posteriors_long_file)
+```
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+# now calculate summary differences
+dp_sum_topic <- d_posteriors_long %>%
+  filter(Topic!="Fun") %>%
+  group_by(Subject,UserName,Topic) %>%
+  summarise(mnBelief = round(mean(Belief,na.rm=TRUE),2),
+            sdBelief = round(sd(Belief,na.rm=TRUE),2),
+            mnExtremeBelief = round(mean(ExtremeBelief,na.rm=TRUE),2),
+            sdExtremeBelief = round(sd(ExtremeBelief,na.rm=TRUE),2),
+            n = n()) %>%
+  ungroup()
+
+dp_sum_all <- d_posteriors_long %>%
+  filter(Topic!="Fun") %>%
+  group_by(Subject,UserName) %>%
+  summarise(mnBelief = round(mean(Belief,na.rm=TRUE),2),
+            sdBelief = round(sd(Belief,na.rm=TRUE),2),
+            mnExtremeBelief = round(mean(ExtremeBelief,na.rm=TRUE),2),
+            sdExtremeBelief = round(sd(ExtremeBelief,na.rm=TRUE),2),
+            n = n()) %>%
+  ungroup() %>%
+  mutate(Topic = "Total") %>%
+  select(Subject,UserName,Topic,mnBelief,mnExtremeBelief,
+         sdBelief,sdExtremeBelief,n)
+
+dp_sum <- rbind(dp_sum_topic,dp_sum_all)
+dp_sum <- dp_sum %>%
+  mutate(Condition = conditionName,
+         TimePoint = "After") %>%
+  select(Subject,UserName,Condition,TimePoint,Topic,
+         mnBelief,mnExtremeBelief,
+         sdBelief,sdExtremeBelief,n)
+
+# write the file
+processed_sum_posteriors_colSpec <- cols(.default = "c")
+processed_sum_posteriors_file <- here(processed_files_mastodon_dir,
+                                  tolower(conditionName),
+                                  "data_summary_posteriors.csv")
+
+dp_sum %>% save_processed_file(file = processed_sum_posteriors_file)
+```
+
+## Polarisation and trust data
+
+Make a dataset with all of answers to the questions that about their trust in each other, polarisation, etc)
+
+### data_after_trust.csv
+
+The dataframe this corresponds to is `d_trust` and it has participant-level information about the answers to the polarisation and trust questions. Each row corresponds to one participant, and the columns are:
+
+**Subject**: the ID number corresponding to that participant
+
+**UserName**: the username that person had on Magpie Social.
+
+**Condition**: the condition these participants are in (i.e., Control or Troll). All participants are the same (set using the variable at the top of the Markdown; having this variable in the data will make it easier to combine files later)
+
+**TimePoint**: the time point this survey corresponds to (which in this case is After); having this variable in the data will make it easier to combine files later
+
+**WVSTrust**: Their answer to the trust question taken from the World Values Survey ("Generally speaking, would you say that most people can be trusted or that you need to be very careful in dealing with people?"). Answers were coded as *trust* (Most people can be trusted), *distrust* (Need to be very careful), and *dontknow*
+
+**TrustPeople, TrustUnis, TrustMedia, TrustGovt, TrustBusiness**: People were asked "How much do you personally trust each of the following?" about people in general; universities; the news media; the government; and business and industry. Answers are on a 0 to 100 scale, with 0 meaning not at all and 100 meaning completely.
+
+**TrustOverall**: This is the average of the five Trust variables above, giving a measure of people's overall trust on a scale from 0 to 100.
+
+**RepThermometer**: People were asked to rate their feelings towards Republicans on a scale of 0 to 100, where 0 is "very unfavourable", 100 is "very favourable", and 50 is neutral.
+
+**DemThermometer**: People were asked to rate their feelings towards Democrats on a scale of 0 to 100, where 0 is "very unfavourable", 100 is "very favourable", and 50 is neutral.
+
+**AffPol**: This is a measure of affective polarisation which is abs(RepThermometer-DemThermometer). A zero indicates that they feel the same towards Republicans and Democrats, i.e., no affective polarisation at all. Higher numbers indicate higher affective polarisation, with 100 being the most (meaning either they love Democrats (DemThermometer=100) and hate Republicans (RepThermometer=0) or they love Republicans (RepThermometer=100) and hate Democrats (DemThermometer=0)).
+
+**RepAngry, RepContempt, RepAdmire, RepFear, RepEnthusiastic, RepPride**: These are their Ratings of each of these emotions toward Republicans (with 0 indicating that they don't have them at all, and 100 indicating that they very much do).
+
+**DemAngry, DemContempt, DemAdmire, DemFear, DemEnthusiastic, DemPride**: These are their Ratings of each of these emotions toward Democrats (with 0 indicating that they don't have them at all, and 100 indicating that they very much do).
+
+**RepNeg**: This is the average of the responses to the three negative emotions about Republicans (RepAngry, RepContempt, RepFear).
+
+**RepPos**: This is the average of the responses to the three positive emotions about Republicans (RepAdmire, RepEnthusiastic, RepPride).
+
+**DemNeg**: This is the average of the responses to the three negative emotions about Democrats (DemAngry, DemContempt, DemFear).
+
+**DemPos**: This is the average of the responses to the three positive emotions about Democrats (DemAdmire, DemEnthusiastic, DemPride).
+
+**RelativePolitics**: This is people's self-classified level of belief polarisation ("Where would you classify your overall political beliefs, relative to most people in the US?"). Here, 0 means far to the left and 100 means far to the right.
+
+**RelativeAI, RelativeClimate, RelativeIsrael, RelativeTrans**: Same question about classifying their political beliefs relative to the population, but this time focused on each of the four main topics. 
+
+**ConsensusPolitics**: This is a measure of people's inferences about how much belief polarisation they think there is. Might be interesting to compare to our actual measures of belief polarisation! The question was "To what extent do you think that most people in the US generally agree with each other about their overall political beliefs?" and answers range from 0 to 100, with 0 meaning no agreement and 100 meaning complete agreement.
+
+**ConsensusAI, ConsensusClimate, ConsensusIsrael, ConsensusTrans**: Same question about perceived consensus/polarisation in the population, but this time focused on each of the four main topics. 
+
+**Election2024**: Who they expect to vote for in 2024:  *harris*, *trump*, *dontknow* (they can't decide), *novote* (they didn't vote), *other*
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+d_trust <- d %>%
+  select(Subject, UserName, RelativePolitics, ConsensusPolitics, WVSTrust,
+  PersonalTrust...People.in.general, PersonalTrust...Universities,
+  PersonalTrust...The.news.media, PersonalTrust...The.government,
+  PersonalTrust...Business.and.industry, Thermometer...Republicans,
+  Thermometer...Democrats, EmotionsRepub...I.feel.admiration.toward.them,
+  EmotionsRepub...I.feel.angry.toward.them, 
+  EmotionsRepub...I.feel.enthusiastic.about.them,
+  EmotionsRepub...I.feel.contempt.toward.them, 
+  EmotionsRepub...I.feel.pride.in.them, EmotionsRepub...I.feel.afraid.of.them,
+  EmotionsDem...I.feel.admiration.toward.them,
+  EmotionsDem...I.feel.angry.toward.them,
+  EmotionsDem...I.feel.enthusiastic.about.them,
+  EmotionsDem...I.feel.contempt.toward.them,
+  EmotionsDem...I.feel.pride.in.them, EmotionsDem...I.feel.afraid.of.them,
+  RelativeViews...Trans.issues,RelativeViews...AI,
+  RelativeViews...Israel.Palestine, RelativeViews...Climate.change, 
+  ConsensusViews...Trans.issues, ConsensusViews...AI,
+  ConsensusViews...Israel.Palestine, ConsensusViews...Climate.change,
+  Election2024...Selected.Choice) %>%
+    rename(TrustPeople = PersonalTrust...People.in.general, 
+           TrustUnis = PersonalTrust...Universities,
+           TrustMedia = PersonalTrust...The.news.media,
+           TrustGovt = PersonalTrust...The.government,
+           TrustBusiness = PersonalTrust...Business.and.industry,
+           RepThermometer = Thermometer...Republicans,
+           DemThermometer = Thermometer...Democrats,
+           RepAdmire = EmotionsRepub...I.feel.admiration.toward.them,
+           RepAngry = EmotionsRepub...I.feel.angry.toward.them,
+           RepEnthusiastic = EmotionsRepub...I.feel.enthusiastic.about.them,
+           RepContempt = EmotionsRepub...I.feel.contempt.toward.them,
+           RepPride = EmotionsRepub...I.feel.pride.in.them,
+           RepFear = EmotionsRepub...I.feel.afraid.of.them,
+           DemAdmire = EmotionsDem...I.feel.admiration.toward.them,
+           DemAngry = EmotionsDem...I.feel.angry.toward.them,
+           DemEnthusiastic = EmotionsDem...I.feel.enthusiastic.about.them,
+           DemContempt = EmotionsDem...I.feel.contempt.toward.them,
+           DemPride = EmotionsDem...I.feel.pride.in.them,
+           DemFear = EmotionsDem...I.feel.afraid.of.them,
+           RelativeTrans = RelativeViews...Trans.issues,
+           RelativeAI = RelativeViews...AI,
+           RelativeIsrael = RelativeViews...Israel.Palestine,
+           RelativeClimate = RelativeViews...Climate.change,
+           ConsensusTrans = ConsensusViews...Trans.issues, 
+           ConsensusAI = ConsensusViews...AI,
+           ConsensusIsrael = ConsensusViews...Israel.Palestine,
+           ConsensusClimate = ConsensusViews...Climate.change,
+           Election2024 = Election2024...Selected.Choice)
+
+# now recode some variables
+d_trust <- d_trust %>%
+  mutate(WVSTrust = case_when(
+    WVSTrust=="Most people can be trusted" ~ "trust",
+    WVSTrust=="Need to be very careful" ~ "distrust",
+    WVSTrust=="Don't know"~"dontknow",
+    TRUE~NA)) %>%
+  mutate(Election2024 = case_when(
+    Election2024=="Harris"~"harris",
+    Election2024=="Trump"~"trump",
+    Election2024=="I can't decide"~"dontknow",
+    Election2024=="I am not going to vote"~"novote",
+    Election2024=="Other"~"other",
+    TRUE~NA)) %>%
+  mutate(TrustPeople = as.numeric(TrustPeople),
+         TrustUnis = as.numeric(TrustUnis),
+         TrustMedia = as.numeric(TrustMedia),
+         TrustGovt = as.numeric(TrustGovt),
+         TrustBusiness = as.numeric(TrustBusiness),
+         RepThermometer = as.numeric(RepThermometer),
+         DemThermometer = as.numeric(DemThermometer),
+         RepAdmire = as.numeric(RepAdmire),
+         RepAngry = as.numeric(RepAngry),
+         RepEnthusiastic = as.numeric(RepEnthusiastic),
+         RepContempt = as.numeric(RepContempt),
+         RepPride = as.numeric(RepPride),
+         RepFear = as.numeric(RepFear),
+         DemAdmire = as.numeric(DemAdmire),
+         DemAngry = as.numeric(DemAngry),
+         DemEnthusiastic = as.numeric(DemEnthusiastic),
+         DemContempt = as.numeric(DemContempt),
+         DemPride = as.numeric(DemPride),
+         DemFear = as.numeric(DemFear))
+
+# now we're going to make some new useful variables
+d_trust <- d_trust %>%
+  mutate(TrustOverall = round((TrustPeople + TrustUnis + TrustGovt +
+                           TrustBusiness + TrustMedia)/5,2)) %>%
+  mutate(AffPol = abs(RepThermometer - DemThermometer),
+         RepNeg = round((RepAngry + RepFear + RepContempt)/3,2),
+         RepPos = round((RepAdmire + RepEnthusiastic + RepPride)/3,2),
+         DemNeg = round((DemAngry + DemFear + DemContempt)/3,2),
+         DemPos = round((DemAdmire + DemEnthusiastic + DemPride)/3,2)) %>%
+  mutate(Condition = conditionName,
+         TimePoint = "After")
+
+# put in a sensible order
+d_trust <- d_trust %>%
+  select(Subject,UserName,Condition,TimePoint,WVSTrust,TrustOverall,
+         TrustPeople,TrustUnis,
+         TrustMedia,TrustGovt,TrustBusiness,RepThermometer,
+         DemThermometer,AffPol,RepNeg,RepPos,DemNeg,DemPos,
+         RepAngry,RepFear,RepContempt,RepAdmire,RepEnthusiastic,
+         RepPride,DemAngry,DemFear,DemContempt,DemAdmire,
+         DemEnthusiastic,DemPride,RelativePolitics,RelativeAI,
+         RelativeClimate,RelativeIsrael,RelativeTrans,
+         ConsensusPolitics,ConsensusAI,ConsensusClimate,
+         ConsensusIsrael,ConsensusTrans,Election2024)
+
+# write the file
+processed_after_trust_colSpec <- cols(.default = "c")
+processed_after_trust_file <- here(processed_files_mastodon_dir,
+                                  tolower(conditionName),
+                                  "data_after_trust.csv")
+
+d_trust %>% save_processed_file(file = processed_after_trust_file)
+```
+
+## Morality data
+
+### data_after_morality.csv
+
+The dataframe this corresponds to is `d_moral` and it has participant-level information about the answers to Kelly's questions about morality, polarisation, etc. Not all of the ones from Before were repeated, but most were. Each row corresponds to one participant's answer to one question, and the columns are:
+
+**Subject**: the ID number corresponding to that participant
+
+**UserName**: the username that person had on Magpie Social.
+
+**Condition**: the condition these participants are in (i.e., Control or Troll). All participants are the same (set using the variable at the top of the Markdown; having this variable in the data will make it easier to combine files later)
+
+**TimePoint**: the time point this survey corresponds to (which in this case is After); having this variable in the data will make it easier to combine files later
+
+**ShortText**: This is a code to the question name, corresponding to the ShortText column in the master stimuli list. Examples include Anomie11, Mor_Convic_AI_Beliefs, etc (see below).
+
+**Topic**: The different topics included in this question set: Anomie, MoralAttachment, MoralConvictions, AttributeStrength, and PoliticalThreat.
+
+**Subtopic**: For AttributeStrength and MoralConvictions, there were the same questions repeated for each of the four conversation topics (AI, Trans, Israel, Climate). These four conversations are the subtopics. The subtopic for the other topics is NA.
+
+**Statement**: Text of the statement the participant was answering.
+
+**Response**: The number corresponding to the response the participant gave. The scale is different for different topics, as explained below.
+
+*Anomie*: Responses were on a 1-7 scale, as follows: 7 (strongly agree), 6 (agree), 5 (slightly agree), 4 (neither disagree nor agree), 3 (slightly disagree), 2 (disagree), 1 (strongly disagree).
+
+*MoralAttachment*: Responses were on a 1-7 scale, as follows: 7 (strongly agree), 6 (agree), 5 (slightly agree), 4 (neither disagree nor agree), 3 (slightly disagree), 2 (disagree), 1 (strongly disagree).
+
+*MoralConvictions*: Responses were on a 0-4 scale, as follows: 4 (very much), 3 (quite a bit), 2 (moderately), 1 (a little), 0 (not at all)
+
+*AttributeStrength*: Responses were on a 1-5 scale (although for this one the participants didn't see the numbers, only the labels), as follows: 5 (extremely strong), 4 (very strong), 3 (moderately strong), 2 (slightly strong), 1 (not at all strong)
+
+*PoliticalThreat*: Responses were on a 1-7 scale, as follows: 7 (strongly agree), 6 (agree), 5 (slightly agree), 4 (neither disagree nor agree), 3 (slightly disagree), 2 (disagree), 1 (strongly disagree).
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+# master stimuli list
+raw_moral_items_colSpec <- cols(.default = "c")
+raw_moral_items_file <- here(raw_files_mastodon_dir,
+                       "morality-stimuli.csv")
+
+morality_items <- read_csv(file = raw_moral_items_file, col_types = raw_moral_items_colSpec) %>%
+  select(ShortText,Topic,Subtopic,Statement) 
+
+d_moral <- d %>%
+  select(Subject, UserName,
+         Anomie...People.think.that.there.are.no.clear.moral.standards.to.follow., 
+         Anomie...Everyone.thinks.of.himself.herself.and.does.not.help.others.in.need., 
+         Anomie...Most.people.think.that.if.something.works..it.doesn.t.really.matter.whether.it.is.right.or.wrong., 
+         Anomie...People.do.not.know.who.they.can.trust.and.rely.on., 
+         Anomie...Most.people.think.that.honesty.doesn.t.work.all.the.time..dishonesty.is.sometimes.a.better.approach.to.get.ahead., 
+         Anomie...People.are.cooperative., 
+         Anomie...The.government.works.towards.the.welfare.of.people., 
+         Anomie...The.government.is.legitimate., 
+         Anomie...The.government.uses.its.power.legitimately., 
+         Anomie...Politicians.don.t.care.about.the.problems.of.average.person., 
+         Anomie...The.government.laws.and.policies.are.effective., 
+         Anomie...Some.laws.are.not.fair.,
+         MoralAttach...People.who.oppose.my.stances.on.important.moral.issues.are.bad.people.,
+         MoralAttach...Those.who.disagree.with.my.stance.on.important.moral.issues.are.morally.corrupt.,
+         MoralAttach...People.who.hold.different.views.to.me.on.important.moral.issues.are.ignorant.,
+         MoralAttach...I.view.those.who.hold.opposing.beliefs.about.important.moral.issues.as.morally.misguided.,
+         MoralAttach...I.consider.those.who.do.not.share.my.beliefs.about.important.moral.issues.as.lacking.moral.integrity.,
+         MoralAttach...I.can.become.angry.or.upset.when.my.beliefs.about.important.moral.issues.are.questioned.by.others.,
+         MoralAttach...I.have.strong.emotional.reactions..such.as.anger.or.frustration..when.my.beliefs.about.important.moral.issues.are.opposed.,
+         MoralAttach...I.feel.a.sense.of.outrage.when.my.beliefs.about.important.moral.issues.are.disagreed.with.,
+         MoralAttach...I.feel.personally.attacked.when.someone.challenges.my.beliefs.on.important.moral.issues.,
+         MoralAttach...I.often.react.emotionally.and.passionately.when.discussing.or.debating.important.moral.issues.,
+         MoralAttach...I.am.certain.about.my.stance.on.important.moral.issues.,
+         MoralAttach...I.have.no.doubts.about.my.beliefs.on.important.moral.issues.,
+         MoralAttach...There.is.nothing.that.can.change.my.stance.on.important.moral.issues.,
+         MoralAttach...My.beliefs.on.important.moral.issues.cannot.be.changed.,
+         MoralAttach...My.views.on.important.moral.issues.may.not.stand.the.test.of.time.,
+         ClimateMorals.......connected.to.your.beliefs.about.fundamental.right.and.wrong.,
+         ClimateMorals.......a.reflection.of.your.core.moral.beliefs.and.convictions.,
+         ClimateMorals.......based.on.moral.principle.,
+         ClimateMorals.......a.moral.stance., 
+         ClimateStrength,
+         AIMorals.......connected.to.your.beliefs.about.fundamental.right.and.wrong.,
+         AIMorals.......a.reflection.of.your.core.moral.beliefs.and.convictions.,
+         AIMorals.......based.on.moral.principle.,
+         AIMorals.......a.moral.stance.,
+         AIStrength,
+         TransMorals.......connected.to.your.beliefs.about.fundamental.right.and.wrong.,
+         TransMorals.......a.reflection.of.your.core.moral.beliefs.and.convictions.,
+         TransMorals.......based.on.moral.principle.,
+         TransMorals.......a.moral.stance.,
+         TransStrength,
+         IsraelMoral.......connected.to.your.beliefs.about.fundamental.right.and.wrong.,
+         IsraelMoral.......a.reflection.of.your.core.moral.beliefs.and.convictions.,
+         IsraelMoral.......based.on.moral.principle.,
+         IsraelMoral.......a.moral.stance.,
+         IsraelStrength,
+         Polarisation...I.feel.threatened.by.the.level.of.disagreement.on.social.and.political.issues.in.my.society.,
+         Polarisation...The.level.of.disagreement.on.social.and.political.issues.in.my.society.makes.me.feel.like.I.personally.don.t.have.control.) %>%
+  rename(Anomie1 = Anomie...People.think.that.there.are.no.clear.moral.standards.to.follow., 
+         Anomie2 = Anomie...Everyone.thinks.of.himself.herself.and.does.not.help.others.in.need., 
+         Anomie3 = Anomie...Most.people.think.that.if.something.works..it.doesn.t.really.matter.whether.it.is.right.or.wrong., 
+         Anomie4 = Anomie...People.do.not.know.who.they.can.trust.and.rely.on., 
+         Anomie5 = Anomie...Most.people.think.that.honesty.doesn.t.work.all.the.time..dishonesty.is.sometimes.a.better.approach.to.get.ahead., 
+         Anomie6 = Anomie...People.are.cooperative., 
+         Anomie7 = Anomie...The.government.works.towards.the.welfare.of.people., 
+         Anomie8 = Anomie...The.government.is.legitimate.,
+         Anomie9 = Anomie...The.government.uses.its.power.legitimately., 
+         Anomie10 = Anomie...Politicians.don.t.care.about.the.problems.of.average.person., 
+         Anomie11 = Anomie...The.government.laws.and.policies.are.effective., 
+         Anomie12 = Anomie...Some.laws.are.not.fair.,
+         MoralAttachment1 = MoralAttach...People.who.oppose.my.stances.on.important.moral.issues.are.bad.people.,
+         MoralAttachment2 = MoralAttach...Those.who.disagree.with.my.stance.on.important.moral.issues.are.morally.corrupt.,
+         MoralAttachment3 = MoralAttach...People.who.hold.different.views.to.me.on.important.moral.issues.are.ignorant.,
+         MoralAttachment4 = MoralAttach...I.view.those.who.hold.opposing.beliefs.about.important.moral.issues.as.morally.misguided.,
+         MoralAttachment5 = MoralAttach...I.consider.those.who.do.not.share.my.beliefs.about.important.moral.issues.as.lacking.moral.integrity.,
+         MoralAttachment6 = MoralAttach...I.can.become.angry.or.upset.when.my.beliefs.about.important.moral.issues.are.questioned.by.others.,
+         MoralAttachment7 = MoralAttach...I.have.strong.emotional.reactions..such.as.anger.or.frustration..when.my.beliefs.about.important.moral.issues.are.opposed.,
+         MoralAttachment8 = MoralAttach...I.feel.a.sense.of.outrage.when.my.beliefs.about.important.moral.issues.are.disagreed.with.,
+         MoralAttachment9 = MoralAttach...I.feel.personally.attacked.when.someone.challenges.my.beliefs.on.important.moral.issues.,
+         MoralAttachment10 = MoralAttach...I.often.react.emotionally.and.passionately.when.discussing.or.debating.important.moral.issues.,
+         MoralAttachment11 = MoralAttach...I.am.certain.about.my.stance.on.important.moral.issues.,
+         MoralAttachment12 = MoralAttach...I.have.no.doubts.about.my.beliefs.on.important.moral.issues.,
+         MoralAttachment13 = MoralAttach...There.is.nothing.that.can.change.my.stance.on.important.moral.issues.,
+         MoralAttachment14 = MoralAttach...My.beliefs.on.important.moral.issues.cannot.be.changed.,
+         MoralAttachment15 = MoralAttach...My.views.on.important.moral.issues.may.not.stand.the.test.of.time.,
+         Mor_Convic_ClimateChange_Beliefs = ClimateMorals.......connected.to.your.beliefs.about.fundamental.right.and.wrong.,
+         Mor_Convic_ClimateChange_Core = ClimateMorals.......a.reflection.of.your.core.moral.beliefs.and.convictions.,
+         Mor_Convic_ClimateChange_Principle = ClimateMorals.......based.on.moral.principle.,
+         Mor_Convic_ClimateChange_Stance = ClimateMorals.......a.moral.stance., 
+         AttStrength_ClimateChange = ClimateStrength,
+         Mor_Convic_AI_Beliefs = AIMorals.......connected.to.your.beliefs.about.fundamental.right.and.wrong.,
+         Mor_Convic_AI_Core = AIMorals.......a.reflection.of.your.core.moral.beliefs.and.convictions.,
+         Mor_Convic_AI_Principle = AIMorals.......based.on.moral.principle.,
+         Mor_Convic_AI_Stance = AIMorals.......a.moral.stance.,
+         AttStrength_AI = AIStrength,
+         Mor_Convic_Trans_Beliefs = TransMorals.......connected.to.your.beliefs.about.fundamental.right.and.wrong.,
+         Mor_Convic_Trans_Core = TransMorals.......a.reflection.of.your.core.moral.beliefs.and.convictions.,
+         Mor_Convic_Trans_Principle = TransMorals.......based.on.moral.principle.,
+         Mor_Convic_Trans_Stance = TransMorals.......a.moral.stance.,
+         AttStrength_Trans = TransStrength,
+         Mor_Convic_IsraelHamas_Beliefs = IsraelMoral.......connected.to.your.beliefs.about.fundamental.right.and.wrong.,
+         Mor_Convic_IsraelHamas_Core = IsraelMoral.......a.reflection.of.your.core.moral.beliefs.and.convictions.,
+         Mor_Convic_IsraelHamas_Principle = IsraelMoral.......based.on.moral.principle.,
+         Mor_Convic_IsraelHamas_Stance = IsraelMoral.......a.moral.stance.,
+         AttStrength_IsraelHamas = IsraelStrength,
+         PolThreat2 = Polarisation...I.feel.threatened.by.the.level.of.disagreement.on.social.and.political.issues.in.my.society.,
+         PolThreat1 = Polarisation...The.level.of.disagreement.on.social.and.political.issues.in.my.society.makes.me.feel.like.I.personally.don.t.have.control.)
+
+# convert attribute variables to numbers
+d_moral <- d_moral %>%
+  mutate(AttStrength_AI = case_when(
+    AttStrength_AI=="Extremely strong" ~ "5",
+    AttStrength_AI=="Very strong" ~ "4",
+    AttStrength_AI=="Moderately strong" ~ "3",
+    AttStrength_AI=="Slightly strong" ~ "2",
+    AttStrength_AI=="Not at all strong" ~ "1",
+    TRUE~NA)) %>%
+  mutate(AttStrength_Trans = case_when(
+    AttStrength_Trans=="Extremely strong" ~ "5",
+    AttStrength_Trans=="Very strong" ~ "4",
+    AttStrength_Trans=="Moderately strong" ~ "3",
+    AttStrength_Trans=="Slightly strong" ~ "2",
+    AttStrength_Trans=="Not at all strong" ~ "1",
+    TRUE~NA)) %>%
+  mutate(AttStrength_ClimateChange = case_when(
+    AttStrength_ClimateChange=="Extremely strong" ~ "5",
+    AttStrength_ClimateChange=="Very strong" ~ "4",
+    AttStrength_ClimateChange=="Moderately strong" ~ "3",
+    AttStrength_ClimateChange=="Slightly strong" ~ "2",
+    AttStrength_ClimateChange=="Not at all strong" ~ "1",
+    TRUE~NA)) %>%  
+  mutate(AttStrength_IsraelHamas = case_when(
+    AttStrength_IsraelHamas=="Extremely strong" ~ "5",
+    AttStrength_IsraelHamas=="Very strong" ~ "4",
+    AttStrength_IsraelHamas=="Moderately strong" ~ "3",
+    AttStrength_IsraelHamas=="Slightly strong" ~ "2",
+    AttStrength_IsraelHamas=="Not at all strong" ~ "1",
+    TRUE~NA))
+
+# make long
+d_moral <- d_moral %>%
+  pivot_longer(cols=-c(Subject,UserName),names_to="ShortText",
+               values_to = "Response")
+
+# combine with stimulus set
+d_moral <- d_moral %>%
+  left_join(morality_items,by="ShortText")
+
+# recode variables
+d_moral <- d_moral %>%
+  mutate(Response = as.numeric(str_remove_all(Response, "[A-Za-z]"))) %>%
+  mutate(Condition = conditionName,
+         TimePoint = "After") %>%
+  select(Subject,UserName,Condition,TimePoint,ShortText,Response,
+         Topic,Subtopic,Statement)
+
+# write the file
+processed_after_moral_colSpec <- cols(.default = "c")
+processed_after_moral_file <- here(processed_files_mastodon_dir,
+                                  tolower(conditionName),
+                                  "data_after_morality.csv")
+
+d_moral %>% save_processed_file(file = processed_after_moral_file)
+```
+
+## Magpie experience data
+
+### data_magpie.csv
+
+The dataframe this corresponds to is `d_magpie` and it has participant-level information about the answers to our questions about people's experiencee on Magpie. Each row corresponds to one participant's answer to one question, and the columns are:
+
+**Subject**: the ID number corresponding to that participant
+
+**UserName**: the username that person had on Magpie Social.
+
+**Condition**: the condition these participants are in (i.e., Control or Troll). All participants are the same (set using the variable at the top of the Markdown; having this variable in the data will make it easier to combine files later)
+
+**TimePoint**: the time point this survey corresponds to (which in this case is After); having this variable in the data will make it easier to combine files later
+
+**SocialMediaNorm**: People were asked how they normally use social media: *politicsSimilar* (discuss political topics like these), *politicsDissimilar* (discuss political topics not like these), *hobbies* (discuss hobbies and interests), *personal* (discuss stuff about my personal life, family, etc), *sharedContent* (consume stuff other people have shared), *advice* (seek advice from forums), *other*
+
+**OverallExperience**: People were asked to rate their overall experience on the Magpie Social platfrom, with 0 being "I hated it" and 10 being "I loved it"
+
+**MagpieSimilarity**: People were asked how similar Magpie Social felt to real social media, with 0 being "Completely different" and 10 being "Virtually identical"
+
+**PropLiked**: People were asked what percentage of people on Magpie Social they liked, with 0 being 0% (i.e., none) and 100 being 100% (i.e., all)
+
+**PropAligned**: People were asked what percentage of people on Magpie Social they thought were aligned with them politically, with 0 being 0% (i.e., none) and 100 being 100% (i.e., all)
+
+**PropTrolls**: People were asked what percentage of people on Magpie Social they thought were trolls/bots, with 0 being 0% (i.e., none) and 100 being 100% (i.e., all)
+
+**UserLikeWhy**: Optional question where people could explain why they liked the specific people they did.
+
+**UserDislikeWhy**: Optional question where people could explain why they disliked the specific people they did.
+
+**UserTrollWhy**: Optional question where people could explain why they thought the specific people they did were trolls.
+
+**UserRepWhy**: Optional question where people could explain why they thought the specific people they did were Republicans.
+
+**UserDemWhy**: Optional question where people could explain why they thought the specific people they did were Democrats.
+
+**FinalComment**: Optional question where we asked for any feedback at all.
+
+
+### data_magpie_users.csv
+
+The dataframe this corresponds to is `duser` and it has information about what each participant thought about other specific participants. Each row corresponds to one participant's answer to one question, and the columns are:
+
+**Subject**: the ID number corresponding to that participant
+
+**UserName**: the username that person had on Magpie Social.
+
+**Condition**: the condition these participants are in (i.e., Control or Troll). All participants are the same (set using the variable at the top of the Markdown; having this variable in the data will make it easier to combine files later)
+
+**TimePoint**: the time point this survey corresponds to (which in this case is After); having this variable in the data will make it easier to combine files later
+
+**JudgeType**: There were five questions asking people to list other specific users. The five question types are the values in this column: *Like* (i.e., which users did that person like), *Dislike*, *Troll* (which did they think were trolls or bots), *Republican* (which did they think were Republicans), and *Democrat*.
+
+**JudgeNum**: For each of the five question types people could list up to three users. The number therefore varies between 1 to 3. Thus if the type is *Like* and the number is 1 that means that the username given was the one the participant liked the most.
+
+**JudgeUser**: The UserName of the person that is being listed (as liked, disliked, a troll, etc). Participants put this in terms of the username, and I've manually gone through to clean it up (e.g., if they misspelled or whatever) but otherwise made no changes. The un-cleaned-up version is in the `files/raw` folder as conditionnameAfterPreUserNameCleaning.csv. 
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+# master stimuli list
+d_magpie <- d %>%
+  select(Subject,UserName,Condition,TimePoint,Proportions...did.you.like.,
+         Proportions...did.you.think.were.aligned.with.you.politically.,
+         Proportions...did.you.think.were.trolls.or.bots.,
+         OverallExperience, MagpieSimilarity,
+         SocialMediaNorm...Selected.Choice,
+         User1Like, User2Like, User3Like, UserLikeWhy,
+         User1Dislike, User2Dislike, User3Dislike, UserDislikeWhy,
+         User1Troll, User2Troll, User3Troll, UserTrollWhy, 
+         User1Rep, User2Rep, User3Rep, UserRepWhy,
+         User1Dem, User2Dem, User3Dem, UserDemWhy, FinalComment) %>%
+  rename(PropLiked = Proportions...did.you.like.,
+         PropAligned = Proportions...did.you.think.were.aligned.with.you.politically.,
+         PropTrolls = Proportions...did.you.think.were.trolls.or.bots.,
+         SocialMediaNorm = SocialMediaNorm...Selected.Choice)
+
+# now replace the usernames with Subject codes
+#names$Lower <- tolower(names$UserName)
+#d_magpie <- d_magpie %>%
+#  mutate(User1Like = tolower(str_replace_all(User1Like,"[[:punct:]]", "")),
+#         User2Like = tolower(str_replace_all(User2Like,"[[:punct:]]", "")),
+#         User3Like = tolower(str_replace_all(User3Like,"[[:punct:]]", "")),
+#         User1Dislike = tolower(str_replace_all(User1Dislike,"[[:punct:]]", "")),
+#         User2Dislike = tolower(str_replace_all(User2Dislike,"[[:punct:]]", "")),
+#         User2Dislike = tolower(str_replace_all(User2Dislike,"[[:punct:]]", "")),
+#         User1Troll = tolower(str_replace_all(User1Troll,"[[:punct:]]", "")),
+#         User2Troll = tolower(str_replace_all(User2Troll,"[[:punct:]]", "")),
+#         User3Troll = tolower(str_replace_all(User3Troll,"[[:punct:]]", ""))) 
+
+# make a long dataset with specific user information
+dlike <- d_magpie %>%
+  select(Subject,UserName,User1Like,User2Like,User3Like) %>%
+  pivot_longer(cols=c(User1Like,User2Like,User3Like),
+               names_to="JudgeNum", values_to="JudgeUser") %>%
+  mutate(JudgeNum = str_replace_all(JudgeNum,"[A-Za-z]",""),
+         JudgeType = "Like") %>%
+  select(Subject,UserName,JudgeType,JudgeNum,JudgeUser)
+
+ddislike <- d_magpie %>%
+  select(Subject,UserName,User1Dislike,User2Dislike,User3Dislike) %>%
+  pivot_longer(cols=c(User1Dislike,User2Dislike,User3Dislike),
+               names_to="JudgeNum", values_to="JudgeUser") %>%
+  mutate(JudgeNum = str_replace_all(JudgeNum,"[A-Za-z]",""),
+         JudgeType = "Dislike") %>%
+  select(Subject,UserName,JudgeType,JudgeNum,JudgeUser)
+
+dtroll <- d_magpie %>%
+  select(Subject,UserName,User1Troll,User2Troll,User3Troll) %>%
+  pivot_longer(cols=c(User1Troll,User2Troll,User3Troll),
+               names_to="JudgeNum", values_to="JudgeUser") %>%
+  mutate(JudgeNum = str_replace_all(JudgeNum,"[A-Za-z]",""),
+         JudgeType = "Troll") %>%
+  select(Subject,UserName,JudgeType,JudgeNum,JudgeUser)
+
+drep <- d_magpie %>%
+  select(Subject,UserName,User1Rep,User2Rep,User3Rep) %>%
+  pivot_longer(cols=c(User1Rep,User2Rep,User3Rep),
+               names_to="JudgeNum", values_to="JudgeUser") %>%
+  mutate(JudgeNum = str_replace_all(JudgeNum,"[A-Za-z]",""),
+         JudgeType = "Republican") %>%
+  select(Subject,UserName,JudgeType,JudgeNum,JudgeUser)
+
+ddem <- d_magpie %>%
+  select(Subject,UserName,User1Dem,User2Dem,User3Dem) %>%
+  pivot_longer(cols=c(User1Dem,User2Dem,User3Dem),
+               names_to="JudgeNum", values_to="JudgeUser") %>%
+  mutate(JudgeNum = str_replace_all(JudgeNum,"[A-Za-z]",""),
+         JudgeType = "Democrat") %>%
+  select(Subject,UserName,JudgeType,JudgeNum,JudgeUser)
+
+duser <- rbind(dlike,ddislike,dtroll,drep,ddem)
+duser$Condition <- conditionName
+duser$TimePoint <- "After"
+duser <- duser %>% select(Subject,UserName,Condition,TimePoint,
+                          JudgeType,JudgeNum,JudgeUser)
+
+# replace names with Subject codes
+# can't figure out how to do this efficiently in tidyverse
+# so I'll do it very hackily since at least this works
+#n <- nrow(duser)
+#for (i in 1:n) {
+#  if (!is.na(match(tolower(duser$JudgeUser[i]),names$Lower))) {
+#    item <- match(tolower(duser$JudgeUser[i]),names$Lower)
+#    duser$JudgeUser[i] <- names$Subject[item]
+#  }
+#}
+
+# write the long form one
+processed_magpie_users_colSpec <- cols(.default = "c")
+processed_magpie_users_file <- here(processed_files_mastodon_dir,
+                                  tolower(conditionName),
+                                  "data_magpie_users.csv")
+
+duser %>% save_processed_file(file = processed_magpie_users_file)
+```
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+# now remove the user information and clean up the rest
+d_magpie <- d_magpie %>%
+  select(Subject, UserName, Condition, TimePoint, OverallExperience, 
+         MagpieSimilarity, PropLiked, PropAligned, PropTrolls,
+         UserLikeWhy, UserDislikeWhy, UserTrollWhy,
+         UserRepWhy, UserDemWhy, FinalComment)
+
+# write the main one
+processed_magpie_colSpec <- cols(.default = "c")
+processed_magpie_file <- here(processed_files_mastodon_dir,
+                                  tolower(conditionName),
+                                  "data_magpie.csv")
+
+d_magpie %>% save_processed_file(file = processed_magpie_file)
+```
+
+## One massive dataset to rule them all
+
+I'm creating one big dataset as I did for the priors, described below. 
+
+### data_after_all.csv
+
+The dataframe this corresponds to is `d_all`. Each row corresponds to one participant, and the columns are:
+
+**Subject**: the ID number corresponding to that participant
+
+**UserName**: the username that person had on Magpie Social.
+
+**Condition**: the condition these participants are in (i.e., Control or Troll). All participants are the same (set using the variable at the top of the Markdown; having this variable in the data will make it easier to combine files later)
+
+**TimePoint**: the time point this survey corresponds to (which in this case is After); having this variable in the data will make it easier to combine files later
+
+**Belief**: This is that person's mean posterior Belief for all of the 48 claims taken together. Remember that Belief is set so that values closer to 0 can be interpreted as agreeing with the left viewpoint and values closer to 100 can be interpreted as agreeing with the right. This variable therefore reflects their general left/right tendency on this issue. It can be used as an overall measure of the population's beliefs.
+
+**BeliefTrans**: This is the mean Belief for that person for all six of the Trans-related claims. 
+
+**BeliefAI**: This is the mean Belief for that person for all six of the AI-related claims. 
+
+**BeliefIsrael**: This is the mean Belief for that person for all six of the Israel-related claims. 
+
+**BeliefClimate**: This is the mean Belief for that person for all six of the Climate-related claims. 
+
+**ExtremeBelief**: This is that person's mean ExtremeBelief for all of the 48 claims taken together. Remember that ExtremeBelief is set so that a 0 indicates they are exactly in the middle (i.e., they chose 50%) and other numbers indicate the distance from zero (thus a 50 would mean the person chose either 0% or 100%). It is a good measure of belief polarisation. 
+
+**ExtremeBeliefTrans**: This is the mean ExtremeBelief for that person for all six of the Trans-related claims. 
+
+**ExtremeBeliefAI**: This is the mean ExtremeBelief for that person for all six of the AI-related claims. 
+
+**ExtremeBeliefIsrael**: This is the mean ExtremeBelief for that person for all six of the Israel-related claims. 
+
+**ExtremeBeliefClimate**: This is the mean ExtremeBelief for that person for all six of the Climate-related claims. 
+
+**WVSTrust**: Their answer to the trust question taken from the World Values Survey ("Generally speaking, would you say that most people can be trusted or that you need to be very careful in dealing with people?"). Answers were coded as *trust* (Most people can be trusted), *distrust* (Need to be very careful), and *dontknow*
+
+**TrustOverall**: This is the average of the five Trust variables above, giving a measure of people's overall trust on a scale from 0 to 100.
+
+**RepThermometer**: People were asked to rate their feelings towards Republicans on a scale of 0 to 100, where 0 is "very unfavourable", 100 is "very favourable", and 50 is neutral.
+
+**DemThermometer**: People were asked to rate their feelings towards Democrats on a scale of 0 to 100, where 0 is "very unfavourable", 100 is "very favourable", and 50 is neutral.
+
+**AffPol**: This is a measure of affective polarisation which is abs(RepThermometer-DemThermometer). A zero indicates that they feel the same towards Republicans and Democrats, i.e., no affective polarisation at all. The higher the number the more affective polarisation, with 100 being maximum indicating either they love Democrats (DemThermometer=100) and hate Republicans (RepThermometer=0) or they love Republicans (RepThermometer=100) and hate Democrats (DemThermometer=0).
+
+**RepNeg**: This is the average of the responses to the three negative emotions about Republicans (RepAngry, RepContempt, RepFear).
+
+**RepPos**: This is the average of the responses to the three positive emotions about Republicans (RepAdmire, RepEnthusiastic, RepPride).
+
+**DemNeg**: This is the average of the responses to the three negative emotions about Democrats (DemAngry, DemContempt, DemFear).
+
+**DemPos**: This is the average of the responses to the three positive emotions about Democrats (DemAdmire, DemEnthusiastic, DemPride).
+
+**RepAngry, RepContempt, RepAdmire, RepFear, RepEnthusiastic, RepPride**: These are their Ratings of each of these emotions toward Republicans (with 0 indicating that they don't have them at all, and 100 indicating that they very much do).
+
+**DemAngry, DemContempt, DemAdmire, DemFear, DemEnthusiastic, DemPride**: These are their Ratings of each of these emotions toward Democrats (with 0 indicating that they don't have them at all, and 100 indicating that they very much do).
+
+**RelativePolitics**: This is people's self-classified level of belief polarisation ("Where would you classify your overall political beliefs, relative to most people in the US?"). Here, 0 means far to the left and 100 means far to the right.
+
+**RelativeAI, RelativeClimate, RelativeIsrael, RelativeTrans**: Same question about classifying their political beliefs relative to the population, but this time focused on each of the four main topics. 
+
+**ConsensusPolitics**: This is a measure of people's inferences about how much belief polarisation they think there is. Might be interesting to compare to our actual measures of belief polarisation! The question was "To what extent do you think that most people in the US generally agree with each other about their overall political beliefs?" and answers range from 0 to 100, with 0 meaning no agreement and 100 meaning complete agreement.
+
+**ConsensusAI, ConsensusClimate, ConsensusIsrael, ConsensusTrans**: Same question about classifying their political beliefs relative to the population, but this time focused on each of the four main topics. 
+**OverallExperience**: People were asked to rate their overall experience on the Magpie Social platfrom, with 0 being "I hated it" and 10 being "I loved it"
+
+**MagpieSimilarity**: People were asked how similar Magpie Social felt to real social media, with 0 being "Completely different" and 10 being "Virtually identical"
+
+**PropLiked**: People were asked what percentage of people on Magpie Social they liked, with 0 being 0% (i.e., none) and 100 being 100% (i.e., all)
+
+**PropAligned**: People were asked what percentage of people on Magpie Social they thought were aligned with them politically, with 0 being 0% (i.e., none) and 100 being 100% (i.e., all)
+
+**PropTrolls**: People were asked what percentage of people on Magpie Social they thought were trolls/bots, with 0 being 0% (i.e., none) and 100 being 100% (i.e., all)
+
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+dp_belief <- dp_sum %>%
+  filter(Topic=="AI" | Topic=="Israel" | Topic=="Climate" |
+           Topic=="Trans" | Topic=="Total") %>%
+  select(Subject,Topic,mnBelief) %>%
+  pivot_wider(names_from="Topic",values_from=mnBelief) %>%
+  rename(BeliefAI = AI, BeliefIsrael = Israel,
+         BeliefClimate = Climate, BeliefTrans = Trans,
+         Belief = Total)
+
+dp_extreme <- dp_sum %>%
+  filter(Topic=="AI" | Topic=="Israel" | Topic=="Climate" |
+           Topic=="Trans" | Topic=="Total") %>%
+  select(Subject,Topic,mnExtremeBelief) %>%
+  pivot_wider(names_from="Topic",values_from=mnExtremeBelief) %>%
+  rename(ExtremeBeliefAI = AI, ExtremeBeliefIsrael = Israel,
+         ExtremeBeliefClimate = Climate, ExtremeBeliefTrans = Trans,
+         ExtremeBelief = Total)
+
+d_all <- dp_belief %>%
+  left_join(dp_extreme,by="Subject")
+
+
+temp_trust <- d_trust %>%
+   select(Subject, WVSTrust, TrustOverall, RepThermometer, 
+         DemThermometer, AffPol, RepNeg, RepPos, DemNeg, DemPos,
+         RepAngry,RepContempt, RepAdmire, RepFear, 
+         RepEnthusiastic, RepPride, DemAngry, DemContempt, 
+         DemAdmire, DemFear, DemEnthusiastic, DemPride,
+         RelativePolitics, RelativeAI, RelativeTrans, 
+         RelativeClimate, RelativeIsrael, ConsensusPolitics,
+         ConsensusAI, ConsensusTrans, ConsensusClimate,
+         ConsensusIsrael)
+
+d_all <- d_all %>%
+  left_join(temp_trust,by="Subject")
+
+d_all$Condition <- conditionName
+
+temp_magpie <- d_magpie %>%
+  select(Subject, UserName, OverallExperience, MagpieSimilarity,
+         PropLiked, PropAligned, PropTrolls)
+
+d_all <- d_all %>%
+  left_join(temp_magpie,by="Subject")
+
+
+# write the file
+processed_after_all_colSpec <- cols(.default = "c")
+processed_after_all_file <- here(processed_files_mastodon_dir,
+                                  tolower(conditionName),
+                                  "data_after_all.csv")
+
+d_all %>% save_processed_file(file = processed_after_all_file)
+```

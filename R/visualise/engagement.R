@@ -1,0 +1,275 @@
+library(here)
+library(tidyverse)
+
+source(here("R/visualise/colour-palettes.R"))
+
+# load activity/conversation data 
+d_statuses_annotated <- read_csv(here("data/magpie/processed/combined/combined_statuses_with_original_annotations.csv")) %>%
+  mutate(StatusID = as.character(StatusID),
+         StatusReplyID = as.character(StatusReplyID),
+         StatusReblogID = as.character(StatusReblogID),
+         Condition = factor(Condition, levels = c("Left", "Control", "Right"))) %>%
+  select(Subject:last_col()) # remove redundant columns before Subject made from csv conversion
+
+
+# Count how many times each StatusID appears in StatusReplyID
+reply_counts <- d_statuses_annotated %>%
+  count(StatusReplyID, name = "reply_count") %>%
+  rename(StatusID = StatusReplyID)
+
+# Join back to  main data
+d_statuses_annotated <- d_statuses_annotated %>%
+  left_join(reply_counts, by = "StatusID") %>%
+  mutate(reply_count = replace_na(reply_count, 0))
+
+
+# create summary variable of engagement
+d_base_summ <- d_statuses_annotated %>%
+  filter(UserName != "Admin") %>%
+  rename(ResponseType = Type) %>% 
+  mutate(Type = 
+    case_when(
+      Reply ~ "Reply",
+      !is.na(AccountReblog) ~ "Reblog",
+      Troll == 1 ~ "Troll Post",
+      TRUE ~ "Post"
+    )) %>%
+  group_by(Condition, category, Topic, Type) %>%
+  summarise(
+    n = n(),
+    n_reblog = sum(reblog_count, na.rm = TRUE),
+    n_fav = sum(fav_count, na.rm = TRUE),
+    n_reply = sum(reply_count, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Add favourites into "type" column for plotting
+fav_summ <- d_base_summ %>%
+  group_by(Condition, category, Topic) %>%
+  summarise(
+    Type = "Favourite",
+    n = sum(n_fav, na.rm = TRUE),
+    n_reblog = 0,
+    n_fav = sum(n_fav, na.rm = TRUE),
+    .groups = "drop"
+  ) %>% 
+  mutate(n_fav = NA) 
+
+# add favourites to base_sum
+d_engagement_summ <- bind_rows(d_base_summ, fav_summ) %>%
+  mutate(Type = factor(Type, 
+                       levels = c("Favourite","Reblog","Reply",
+                                  "Post", "Troll Post")),
+         Topic = factor(Topic, levels = c("AI", "Climate", "Israel", "Trans", "Friendly", "Meta", "Offtopic")))
+
+
+# set colour sale of status plots 
+status_colours <- c("Post"="#0000CC","Reply"="#0099FF","Reblog"="#CCCCFF",
+                     "Favourite"="#9933FF", "Troll Post" = "yellow")
+
+
+p_engage_total <- d_engagement_summ %>%
+  group_by(Condition, Type) %>%
+  summarise(n = sum(n)) %>%
+  ggplot(mapping=aes(y=Condition,x=n,fill=Type)) +
+  geom_col(position="stack",orientation="y",colour="black") +
+  theme_bw() +
+  scale_y_discrete(limits = rev) +
+  theme(axis.text.y = element_text(angle = 90, size=10, hjust=0.5),
+        axis.title.y = element_blank(), axis.title.x=element_blank(),
+        axis.ticks.y = element_blank(),
+        legend.position = "top") +
+  scale_fill_manual(values=status_colours) +
+  labs(title = "A. Engagement by condition") 
+
+p_engage_total
+
+ggsave(paste0("R/visualise/plots/engagement/engagement-by-condition.png"),
+       plot=p_engage_total,device="png",
+       width=12,height=8, units="cm")
+
+p_engagament_polarity <- d_engagement_summ %>%
+  rename("Polarity" = "category") %>%
+  mutate(Polarity = ifelse(Polarity == "not_applicable" & Topic == "Friendly", "Friendly", Polarity)) %>%
+  group_by(Condition, Type, Polarity) %>%
+  summarise(n = sum(n)) %>%
+  filter(Type!="Sum", Polarity %in% c("Left", "Neutral", "Right", "Friendly")) %>%
+  ggplot(mapping=aes(x=Polarity,y=n,fill=Type)) +
+  geom_col(position="stack",orientation="x",colour="black") +
+  theme_bw() +
+  facet_wrap(~Condition,ncol=7) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  #scale_y_discrete(limits=rev) +
+  #scale_x_continuous(limits=c(0,450)) +
+  theme(#axis.text.y = element_blank(), #element_text(angle = 30, size=9, hjust=0),
+    #axis.title.y = element_blank(), 
+    #axis.title.x=element_blank(),
+    legend.position = "none",
+    axis.ticks.y = element_blank()) +
+  scale_fill_manual(values=status_colours) +
+  labs(title = str_wrap("B. Political polarity of activity by troll condition",70), x = "Polarity of Engagement", y = "Total Activity") 
+
+p_engagament_polarity
+
+ggsave(paste0("R/visualise/plots/engagement/engagement-by-polarity.png"),
+       plot=p_engagament_polarity,device="png",
+       width=12,height=8, units="cm")
+
+
+political_topics <- c("AI", "Climate", "Israel", "Trans")
+
+d_summ_political_post <- d_engagement_summ %>%
+  filter(Type == "Post" | Type == "Troll Post")  %>%
+  mutate(
+  Account = case_when(
+      Type == "Post" & Topic %in% political_topics ~ "User (Political)",
+      Type == "Troll Post" ~ "Troll",
+      TRUE ~ "User (Non-Political)"
+    ) 
+  )%>%
+  select(-Type) %>% # redundant now because we're just looking at primary posts
+  pivot_longer(cols = starts_with("n_"),
+               names_to = "Type") %>%
+  mutate(Type = case_when(
+    Type == "n_fav" ~ "Favourite",
+    Type == "n_reblog" ~ "Reblog",
+    Type == "n_reply" ~ "Reply"
+  )) %>%
+  group_by(Condition,Account, Type) %>%
+  summarise(Count = sum(value, na.rm = TRUE), n = sum(n)) %>%
+  mutate(`Engagement Per Post` = Count/n)
+
+
+p_troll_engagement<- d_summ_political_post %>%
+  ggplot(aes(x = Account, y = `Engagement Per Post`, fill = Type)) +
+  scale_fill_manual(values=status_colours) +
+  geom_col(position="stack",orientation="x",colour="black")+
+  labs(y = "Engagement Per Post", x = "Account Type", fill = "Engagement Type", title = str_wrap("C. Engagement per post by troll accounts versus participants in each condition",80)) + 
+  facet_wrap(~Condition) +
+  theme_bw()+
+  theme(legend.position = "none")
+
+
+ggsave(paste0("R/visualise/plots/engagement/troll-engagement.png"),
+       plot=p_troll_engagement,device="png",
+       width=12,height=8, units="cm")
+
+
+p_engagement_topic <- d_engagement_summ %>%
+  group_by(Condition, Type, Topic) %>%
+  summarise(n = sum(n)) %>%
+  ggplot(mapping=aes(x=Topic,y=n,fill=Type)) +
+  geom_col(position="stack",orientation="x",colour="black") +
+  theme_bw() +
+  facet_wrap(~Condition,ncol=7) +
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  theme(
+    legend.position = "none",
+    axis.ticks.y = element_blank(),
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)
+    ) +
+  scale_fill_manual(values=status_colours) +
+  labs(title = str_wrap("D. Topic of activity by troll condition",70), x = "Polarity of Engagement", y = "Total Activity")
+
+p_engagement_topic  
+
+ggsave(paste0("R/visualise/plots/engagement/engagement-by-topic.png"),
+       plot=p_engagement_topic,device="png",
+       width=12,height=8, units="cm")
+
+# get polarity of replies
+d_activity_annotated_with_reply_polarity <- d_statuses_annotated %>%
+  left_join(
+    d_statuses_annotated %>%
+      select(StatusID, category) %>%
+      rename(StatusReplyID = StatusID,
+             ReplyPolarity = category),
+    by = "StatusReplyID"
+  )
+
+troll_accounts <- unique(d_statuses_annotated[d_statuses_annotated$Troll == 1, "UserName"])
+
+polarity_of_replies_received <- d_activity_annotated_with_reply_polarity %>%
+  group_by(AccountReply, Condition, Topic, category) %>%
+  summarise(TotalRepliesReceived = sum(!is.na(AccountReply), na.rm = TRUE),
+            LeftReceived = sum(category == "Left", na.rm = TRUE),
+            RightReceived = sum(category == "Right", na.rm = TRUE),
+            PropRightReceived = RightReceived - TotalRepliesReceived, 
+            PropRightVsLeftReceived = RightReceived - LeftReceived, 
+            PropFriendlyReceived = sum(Topic == "Friendly", na.rm = TRUE) - TotalRepliesReceived, 
+            PropLeftReceived = LeftReceived - TotalRepliesReceived, 
+            NeutralReceived = sum(category == "Neutral" | is.na(category)),
+            DissentingLeftReceived = sum(category == "Left" & ReplyPolarity == "Right", na.rm = TRUE), # Left wing replies to right wing posts
+            DissentingRightReceived = sum(category == "Right" & ReplyPolarity == "Left", na.rm = TRUE), # Right wing replies to left wing posts
+            PropDissentingRightReceived = DissentingRightReceived - DissentingLeftReceived,
+            SupportingLeftReceived = sum(category == "Left" & ReplyPolarity == "Left", na.rm = TRUE), # Left wing replies to left wing posts
+            SupportingRightReceived = sum(category == "Right" & ReplyPolarity == "Right", na.rm = TRUE), # Left wing replies to right wing posts
+            PropSupportingRightReceived = SupportingRightReceived - SupportingLeftReceived,
+            TotalFavouritesReceived = sum(fav_count, na.rm = TRUE) ,
+  ) %>%
+  # remove confederate accounts 
+  filter(!AccountReply %in% troll_accounts) %>%
+  rename("UserName" = AccountReply)
+  
+d_replies_polarity_long <- polarity_of_replies_received %>%
+  pivot_longer(
+    cols = c("LeftReceived", "RightReceived", "NeutralReceived"),
+    names_to = c("ReplyPolarity"),
+    values_to = "Count"
+  )
+
+d_replies_type_long <- polarity_of_replies_received %>%
+         #   mutate(Dissenting = DissentingLeftReceived + DissentingRightReceived,
+         # Supporting = SupportingLeftReceived + SupportingRightReceived) %>%
+  pivot_longer(
+    cols = c("DissentingLeftReceived","DissentingRightReceived", "NeutralReceived", "SupportingLeftReceived", "SupportingRightReceived"),
+    names_to = "ReplyType",
+    values_to = "Count"
+  )  %>%
+  mutate(Stance = case_when(
+    grepl("Dissenting", ReplyType) ~ "Dissenting",
+    grepl("Neutral", ReplyType) ~ "Neutral",
+    grepl("Supporting", ReplyType) ~ "Supporting",
+  ),
+  Polarity = case_when(
+    grepl("Left", ReplyType) ~ "Left",
+    grepl("Right", ReplyType) ~ "Right",
+    grepl("Neutral", ReplyType) ~ "Neutral"
+  )) 
+
+
+d_replies_polarity_long %>%
+  group_by(Condition, ReplyPolarity) %>%
+  summarise(n_replies = sum(Count)) %>%
+  ggplot(aes(x = ReplyPolarity, y = n_replies)) +
+  geom_col()+
+  facet_wrap(~Condition)
+
+d_replies_type_long %>%
+  group_by(Condition, Stance, Polarity) %>%
+  summarise(n_replies = sum(Count)) %>%
+  ggplot(aes(x = Stance, y = n_replies, fill = Polarity)) +
+  geom_col(position="stack",orientation="x",colour="black") +
+  facet_wrap(~Condition) +
+  scale_fill_manual(values=polarityColours)+
+  theme_bw()+
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
+  theme(
+    #legend.position = "none",
+    axis.ticks.y = element_blank(),
+    #axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)
+  ) +
+  #scale_fill_manual(values=status_colours) +
+  labs(title = str_wrap("E. Stance and polarity of replies by troll condition",70), x = "Stance of Engagement", y = "Total Number of Replies")
+
+
+
+# get conversations that were intiated by trolls 
+troll_conv <- d_statuses_annotated %>%
+  filter(Troll == 1) %>%
+  select(ConvID) %>%
+  unique()
+
+
+d_status_troll_initiated <- d_statuses_annotated %>%
+  mutate(troll_initiated = ifelse(ConvID %in% unlist(troll_conv),TRUE, FALSE))

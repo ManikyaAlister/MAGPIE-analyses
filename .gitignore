@@ -47,3 +47,25 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# initially, let's be conservative about which data we share
+data/analytics/*
+# mastodon seems to have more raw data, so could be some identifiability issues here
+data/mastodon/*
+# keep only the combined data sets because I know those are necessary
+data/magpie/original/left/*
+data/magpie/original/right/*
+data/magpie/original/control/*
+data/magpie/processed/left/*
+data/magpie/processed/right/*
+data/magpie/processed/control/*
+
+# Archive folder 
+Archive/*
+
+# DS Store
+.DS_Store
+*/DS_Store
+
+
+
