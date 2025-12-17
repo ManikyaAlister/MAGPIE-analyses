@@ -1,70 +1,61 @@
-# how are survey responses affected by their activity/behavioural experiences on the platform. 
+############################################################
+# How are survey responses affected by platform experiences?
+############################################################
+
 library(here)
 library(tidyverse)
-library(dotwhisker)
 library(broom)
+library(dotwhisker)
 
 source("R/visualise/colour-palettes.R")
 
-generate_formula = function(outcome, control, predictors){
-  formula_string <- paste0(outcome, " ~ ", control, predictors)
-  as.formula(formula_string)
+# Control and outcome variables
+control_variables <- "ConsensusPoliticsBefore"
+outcome_variables <- "PropAligned"
+
+############################################################
+# Utilities
+############################################################
+
+# Construct and fit a linear model
+linear_model <- function(outcome, rhs, data) {
+  formula <- as.formula(paste0(outcome, " ~ ", rhs))
+  lm(formula = formula, data = data)
 }
 
-linear_model <- function(outcome, control, predictors, data, type = "glm") {
-  formula <- generate_formula(outcome, control, predictors)
+# Run a set of models differing only by predictor specification
+runMultipleModels <- function(data, outcome, control, predictors) {
   
-  if(type == "lm" ){
-    data %>% lm(formula = formula)
-  } else if (type == "glm") {
-    data %>% glm(formula = formula,
-                 family = quasibinomial(link = "logit")
-                 )
-  } else {
-    error("type can be lm or glm")
-  }
-  
-}
-
-linear_model <- function(outcome, control, predictors, data) {
-  formula <- generate_formula(outcome, control, predictors)
-  
-  data %>% lm(formula = formula)
-}
-
-# scale combined data between 0 and 1 for beta regression
-
-scale_to_01 <- function(x) {
-  (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
-}
-
-runMultipleModels <- function(data, outcome, control, predictors, type = "glm") {
   purrr::map_dfr(predictors, function(pred) {
-    if (type == "glm"){
-      data[,outcome] <- scale_to_01(data[,outcome]) # ensure that outcome variable is scaled between 0 and 1 for beta regression
-    }
-  
     
-    m <- linear_model(outcome, control, pred, data)
+    rhs <- paste(c(control, pred), collapse = " ")
+    
+    m <- linear_model(outcome, rhs, data)
     
     broom::tidy(m) %>%
-      mutate(model = paste0(outcome, " ~ ", control, pred))
+      mutate(
+        model = paste0(outcome, " ~ ", rhs)
+      )
   })
 }
 
+############################################################
+# Plotting
+############################################################
+
 plotMultipleModelCoeffs <- function(model_output,
-                                            control_var,
-                                            title = NULL,
-                                            xlab = "Estimate",
-                                            ylab = "Model") {
+                                    control_var,
+                                    title = NULL,
+                                    xlab = "Estimate",
+                                    ylab = "Model") {
   
   clean <- model_output %>%
     filter(term != "(Intercept)") %>%
-    mutate(term = as.character(term)) %>%                 # ensure character
+    mutate(term = as.character(term)) %>%
     group_by(model) %>%
-    mutate(has_interaction = any(str_detect(term, fixed(":")))) %>%  # detect interactions first
+    mutate(has_interaction = any(str_detect(term, fixed(":")))) %>%
     ungroup() %>%
-    # remove the control main effect only (exact match or backticked)
+    # remove control main effect only
     filter(!term %in% c(control_var, paste0("`", control_var, "`"))) %>%
     group_by(model, has_interaction) %>%
     filter(if (has_interaction[1]) str_detect(term, fixed(":")) else TRUE) %>%
@@ -75,169 +66,243 @@ plotMultipleModelCoeffs <- function(model_output,
       TRUE ~ "Not by condition"
     ))
   
-  ggplot(clean, aes(x = estimate, y = model, color = condition)) +
+  ggplot(clean, aes(x = estimate, y = model, colour = condition)) +
     geom_point(size = 3, position = position_dodge(width = 0.6)) +
     geom_errorbar(
-      aes(xmin = estimate - 1.96 * std.error,
-          xmax = estimate + 1.96 * std.error),
+      aes(
+        xmin = estimate - 1.96 * std.error,
+        xmax = estimate + 1.96 * std.error
+      ),
       width = 0.2,
       position = position_dodge(width = 0.6)
     ) +
-    geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+    geom_vline(xintercept = 0, linetype = "dashed", colour = "gray50") +
     labs(x = xlab, y = ylab, title = title) +
-    guides(color = "none") +          # ← remove legend
     theme_minimal(base_size = 14) +
     theme(
       panel.grid.major.y = element_blank(),
-      legend.position = "none"        # ← also ensure no legend
+      legend.position = "none"
     )
 }
 
-# runMultipleLMs <- function(data, formulas, model_names = NULL) {
-#   if (is.null(model_names)) {
-#     model_names <- formulas
-#   }
-#   
-#   out <- purrr::map2_dfr(
-#     formulas,
-#     model_names,
-#     ~{
-#       lm(as.formula(.x), data = data) |>
-#         broom::tidy() |>
-#         mutate(model = .y)
-#     }
-#   )
-#   
-#   out
-# }
+############################################################
+# Data loading and preparation
+############################################################
 
-# load before, after, change combined data
-load(here("data/magpie/processed/combined/survey-before-after-change.Rdata"))
-
-# load posts seen data 
-load(here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))
-
-# load received data 
-replies_received <- read_csv(here("data/magpie/processed/combined/replies-received.csv"))
-
-# get participants whose data was available for the "seen" metrics
-d_survey<- d_before_after_change %>%
-  filter(UserName %in% unique_posts_seen_by_user$username)
-
-# combine posts seen data and survey data
-combined_seen_survey <- d_survey %>%
-  left_join(
-    unique_posts_seen_by_user,
-    by = c("UserName" = "username", "Condition")
+load_and_combine_data <- function(no_troll = FALSE) {
+  
+  # Select appropriate posts-seen data
+  posts_seen <- if (no_troll) {
+    unique_posts_seen_by_user_no_troll
+  } else {
+    unique_posts_seen_by_user
+  }
+  
+  # Load survey data
+  load(here("data/magpie/processed/combined/survey-before-after-change.Rdata"))
+  
+  # Load posts-seen data
+  load(here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))
+  
+  # Load replies received data
+  replies_received <- read_csv(
+    here("data/magpie/processed/combined/replies-received.csv")
   )
   
-combined_seen_reply_survey <- combined_seen_survey %>%
-  left_join(
-    replies_received, 
-    by = c("UserName", "Condition")
+  # Keep participants with posts-seen data
+  d_survey <- d_before_after_change %>%
+    filter(UserName %in% posts_seen$username)
+  
+  # Merge datasets
+  combined <- d_survey %>%
+    left_join(
+      posts_seen,
+      by = c("UserName" = "username", "Condition")
+    ) %>%
+    left_join(
+      replies_received,
+      by = c("UserName", "Condition")
+    )
+  
+  # Scale numeric variables for coefficient comparison
+  combined_scaled <- combined %>%
+    mutate(across(where(is.numeric), scale))
+  
+  list(
+    scaled = combined_scaled,
+    unscaled = combined
   )
+}
 
+############################################################
+# Model specifications
+############################################################
 
-# scale variables for compariosn of coefficients
-combined_survey_scaled <- combined_seen_reply_survey %>%
-  mutate(across(where(is.numeric), scale))
-
-
-# remove participants with NAs in key variables so that we can appropriately compare using BIC
-combined_survey_clean <- combined_seen_reply_survey
-  
-
-# set up linear models 
-
-# set up general predictors of interest
-  
-# single parameter predictors
-  
-single_param_predictors <- c( # i know interactions aren't technically 1 param but the idea is that there are no other unique variables
+# Predictors of interest
+single_param_predictors <- c(
   " + Condition",
   " * Condition",
   " + prop_right",
   " * prop_right",
-  "+ Condition * prop_right",
+  " + Condition * prop_right",
   " + prop_left",
   " * prop_left",
   " + PropRightReceived",
   " * PropRightReceived",
-  " + TotalFavouritesReceived ",
-  " * TotalFavouritesReceived ",
-  " + PropRightReceived",
-  " * PropRightReceived",
+  " + TotalFavouritesReceived",
+  " * TotalFavouritesReceived",
   " + PropLeftReceived",
   " * PropLeftReceived",
   " + PropFriendlyReceived",
   " * PropFriendlyReceived"
-)  
+)
 
 predictor_combos <- c(
   "",
-  "BelifAfter ~ BeliefBefore * Condition",
+  " + BeliefBefore * Condition",
   " + prop_right + Condition",
   " + (prop_right * Condition)",
-  " * PropRightReceived + condition",
-  " * PropLeftReceived + condition",
+  " * PropRightReceived + Condition",
+  " * PropLeftReceived + Condition",
   " + prop_right + PropRightReceived",
   " + prop_left + PropLeftReceived"
 )
 
-control_variables <- c("BeliefIsraelBefore")#, "ConsensusPoliticsBefore", "RelativePoliticsBefore")
+all_predictors <- c(single_param_predictors)#, predictor_combos)
 
-outcome_variables <- c("BeliefIsraelAfter")#, "ConsensusPoliticsAfter", "PropLiked", "PropAligned", "PropTrolls")
+#############################################################
+# Run general models (full data only)
+############################################################
 
+# Load full dataset (including troll-initiated conversations)
+combined_survey_scaled <- load_and_combine_data(no_troll = FALSE)[["scaled"]]
 
-
-
+# Run models across all predictor specifications
 model_output <- runMultipleModels(
-  data = combined_survey_scaled,
-  outcome = outcome_variables,
-  control = control_variables,
-  predictors = single_param_predictors
+  data       = combined_survey_scaled,
+  outcome    = outcome_variables,
+  control    = control_variables,
+  predictors = all_predictors
 )
 
+############################################################
+# Plot results
+############################################################
 
-plotMultipleModelCoeffs(model_output,
-                                control_var = control_variables,
-                                title = paste0("Coefficient Plot Predicting ",outcome_variables, " Controlling for ", control_variables ))
+title <- paste0(
+  "Predicting ", outcome_variables,
+  " controlling for ", control_variables
+)
 
+plot <- plotMultipleModelCoeffs(
+  model_output,
+  control_var = control_variables,
+  title = title
+)
 
-ggsave(filename = here(paste0("R/visualise/plots/linear-modelling/predicting-",outcome_variables,"-controlling-",control_variables,".png")), width = 16, height = 5)
+path <- here(
+  paste0(
+    "R/visualise/plots/linear-modelling/predicting-",
+    outcome_variables,
+    "-controlling-",
+    control_variables,
+    ".png"
+  )
+)
 
-t = linear_model("BeliefAfter", "BeliefBefore", "+ Condition", data = combined_survey_scaled)
-summary(t)
+plot
 
-# follow up interactions
-## consensusPolitics
-### consensusPoliticsBefore * Condition
-### condition * prop_right
+ggsave(path, plot, width = 16, height = 6)
+############################################################
+# Robustness check: prop_* predictors
+# Troll vs no-troll comparison
+############################################################
 
-# Bin consensus politics before for potting 
+# Identify predictors affected by troll-initiated conversations
+prop_seen_predictors <- all_predictors[grep("prop_", all_predictors)]
 
-combined_survey_clean <- combined_survey_clean %>%
-  mutate(ConsensusPoliticsBeforeBinned = case_when(
+# Load datasets
+combined_survey_scaled       <- load_and_combine_data(no_troll = FALSE)[["scaled"]]
+combined_survey_scaled_no_tr <- load_and_combine_data(no_troll = TRUE)[["scaled"]]
+
+# Run models (including troll-initiated conversations)
+model_output_prop_seen <- runMultipleModels(
+  data       = combined_survey_scaled,
+  outcome    = outcome_variables,
+  control    = control_variables,
+  predictors = prop_seen_predictors
+) %>%
+  mutate(troll = "Including troll")
+
+# Run models (excluding troll-initiated conversations)
+model_output_prop_seen_no_tr <- runMultipleModels(
+  data       = combined_survey_scaled_no_tr,
+  outcome    = outcome_variables,
+  control    = control_variables,
+  predictors = prop_seen_predictors
+) %>%
+  mutate(troll = "Excluding troll")
+
+# Combine results for comparison
+model_output_prop_seen_combined <- bind_rows(
+  model_output_prop_seen,
+  model_output_prop_seen_no_tr
+)
+
+############################################################
+# Plot robustness comparison
+############################################################
+
+title <- paste0(
+  "Predicting ", outcome_variables,
+  " controlling for ", control_variables,
+  "\nRobustness to removing troll-initiated conversations"
+)
+
+plot <- plotMultipleModelCoeffs(
+  model_output_prop_seen_combined,
+  control_var = control_variables,
+  title = title
+) +
+  facet_wrap(~ troll)
+
+path <- here(
+  paste0(
+    "R/visualise/plots/linear-modelling/predicting-",
+    outcome_variables,
+    "-controlling-",
+    control_variables,
+    "-prop-predictors-troll-robustness.png"
+  )
+)
+
+plot
+
+ggsave(path, plot, width = 16, height = 6)
+# follow up interactions ## consensusPolitics ### consensusPoliticsBefore * Condition ### condition * prop_right # Bin consensus politics before for potting 
+combined_survey_clean <- combined_survey_clean %>% mutate(
+  ConsensusPoliticsBeforeBinned = case_when(
     ConsensusPoliticsBefore < 50 ~ "Low Perceivceived Consensus",
     ConsensusPoliticsBefore > 50 ~ "High Perceivceived Consensus"
-  ))
+  )
+) 
 
 
-combined_survey_clean %>%
-  ggplot(aes(x = prop_right, y = ConsensusPoliticsAfter, colour = Condition, fill = Condition)) + 
-  geom_point()+
-  geom_smooth(method = "lm") +
-  scale_fill_manual(values = conditionColours)+
-  scale_colour_manual(values = conditionColours)+
-  theme_bw()
+combined_survey_clean %>% ggplot(aes(
+  x = prop_right,
+  y = ConsensusPoliticsAfter,
+  colour = Condition,
+  fill = Condition
+)) + fgeom_point() + 
+  geom_smooth(method = "lm") + 
+  scale_fill_manual(values = conditionColours) +
+  scale_colour_manual(values = conditionColours) + theme_bw() 
 
-combined_survey_clean %>%
-  ggplot(aes(x = ConsensusPoliticsBefore, y = ConsensusPoliticsAfter, colour = Condition, fill = Condition)) + 
-  geom_point()+
-  geom_smooth(method = "lm") +
-  scale_fill_manual(values = conditionColours)+
-  scale_colour_manual(values = conditionColours)+
-  theme_bw()
-
-
-
+combined_survey_clean %>% ggplot(
+  aes(
+    x = ConsensusPoliticsBefore,
+    y = ConsensusPoliticsAfter,
+    colour = Condition,
+    fill = Condition
+  )
+) + geom_point() + geom_smooth(method = "lm") + scale_fill_manual(values = conditionColours) + scale_colour_manual(values = conditionColours) + theme_bw()

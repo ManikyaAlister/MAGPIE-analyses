@@ -43,11 +43,12 @@ d_statuses_annotated <- read_csv(here("data/magpie/processed/combined/combined_s
          StatusReplyID = as.character(StatusReplyID),
          StatusReblogID = as.character(StatusReblogID))
 
+
 # link polarity to posts seen 
 visibility_polarity <- combined_visibility %>%
   left_join(
     d_statuses_annotated %>% 
-      select(StatusID, Condition, Topic, category, Text, Troll),
+      select(StatusID, Condition, Topic, category, Text, Troll, ConvID),
     by = c("status_id" = "StatusID", "Condition")  ) %>% 
   mutate(status_id = as.character(status_id))
 
@@ -95,8 +96,6 @@ unique_posts_seen_by_user <- visibility_polarity %>%
     prop_friendly = friendly_seen/total_seen,
     prop_non_political = non_political_seen/total_seen
   )
-
-save(posts_seen_by_user, unique_posts_seen_by_user, file =here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))
 
 # Keep only numeric columns in both data frames for correlations
 posts_num <- posts_seen_by_user %>% 
@@ -265,3 +264,41 @@ for (i in 1:length(x_variables)){
 
 ggarrange(plotlist = plot_list)
 ggsave(filename = here(paste0(path,"/",y_var,"-posts-seen-combined.png")), width = 12, height = 7)
+
+
+# calculate unique posts seen per user removing "troll initiated" conversations
+
+
+# get conversations that were intiated by trolls 
+troll_conv <- d_statuses_annotated %>%
+  filter(Troll == 1) %>%
+  select(ConvID) %>%
+  unique()
+
+# remove conversations that were initiated by trolls
+visibility_polarity_no_troll <- visibility_polarity %>%
+  filter(! ConvID %in% unlist(troll_conv))
+
+
+unique_posts_seen_by_user_no_troll <- visibility_polarity_no_troll %>%
+  filter(username != "admin") %>%
+  group_by(Condition,username, category, Topic, Troll) %>%
+  distinct(status_id) %>% # makes it unique posts seen per user
+  group_by(Condition,username) %>%
+  summarise(total_seen = n(),
+            left_seen = sum(category == "Left", na.rm = TRUE),
+            right_seen = sum(category == "Right", na.rm = TRUE),
+            friendly_seen = sum(Topic == "Friendly", na.rm = TRUE),
+            meta_seen = sum(Topic == "Meta", na.rm = TRUE),
+            on_topic_seen = sum(Topic %in% c("Trans", "Israel", "Climate", "AI"), na.rm = TRUE),
+            non_political_seen = sum(! category %in% c("Left", "Right"), na.rm = TRUE),
+            troll_seen = sum(Troll, na.rm = TRUE)
+  ) %>%
+  mutate(
+    prop_left = left_seen/total_seen,
+    prop_right = right_seen/total_seen,
+    prop_friendly = friendly_seen/total_seen,
+    prop_non_political = non_political_seen/total_seen
+  )
+
+save(posts_seen_by_user, unique_posts_seen_by_user, unique_posts_seen_by_user_no_troll, file =here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))

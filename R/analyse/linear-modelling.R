@@ -4,13 +4,12 @@ library(dotwhisker)
 library(broom)
 library(ggpubr)
 
-
 source("R/visualise/colour-palettes.R")
 
 
 # load before and after data separately
-d_before <- read_csv(here("data/mastodon/files/processed/combined/before.csv"))
-d_after  <- read_csv(here("data/mastodon/files/processed/combined/after.csv"))
+load(here("data/magpie/original/combined/before.Rdata"))
+load(here("data/magpie/original/combined/after.Rdata"))
 
 # load before, after, change combined data
 load(here(
@@ -76,22 +75,30 @@ plotMultipleModelCoeffs = function(model_output,
                                    subtitle = NULL,
                                    legend.position = "none",
                                    ytext = TRUE,
-                                   xlim = c(-1.2,0.8)) {
+                                   xlim = c(-1.2,0.8),
+                                   by_topic = TRUE) {
   keywords <- c("AI", "Trans", "Climate", "Israel")
   
   # Extract condition label (Left/Right)
   clean_m <- model_output %>%
     filter(term == "ConditionLeft" | term == "ConditionRight") %>%
-    mutate(Condition = ifelse(grepl("Left", term), "Left", "Right"),
+    mutate(model_clean = model,
+           Condition = ifelse(grepl("Left", term), "Left", "Right"))
+    
+  
+  if (by_topic) {
+    clean_m <- clean_m %>%
+    mutate(
            model_clean = str_extract(model, paste(keywords, collapse = "|")),
            model_clean = if_else(is.na(model_clean), "Overall", model_clean),
            model_clean = factor(model_clean, levels = c(keywords, "Overall")))
+  }
+    
   
   
   # Plot
   p <- ggplot(clean_m, aes(x = estimate, y = model_clean, color = Condition)) +
-    geom_point(position = position_dodge(width = 0.6), size = 3) +
-    geom_errorbar(
+  geom_errorbar(
       aes(
         xmin = estimate - 1.96 * std.error,
         xmax = estimate + 1.96 * std.error
@@ -99,10 +106,19 @@ plotMultipleModelCoeffs = function(model_output,
       width = 0.2,
       position = position_dodge(width = 0.6)
     ) +
+    geom_point(
+      aes(fill = Condition),
+      position = position_dodge(width = 0.6),
+      size = 3,
+      shape = 21,
+      colour = "black",
+      stroke = 0.6
+    )+
     geom_vline(xintercept = 0,
                linetype = "dashed",
                color = conditionColours["Control"]) +
     scale_color_manual(values = conditionColours) +
+    scale_fill_manual(values = conditionColours) +
     #lims(x = c(-0.45,0.45))+
     labs(
       x = xlab,
@@ -205,7 +221,8 @@ plot_lm_and_bar = function(variable_groups,
                            change = TRUE,
                            ylim = NULL,
                            ytext = FALSE,
-                           xlim = c(-1.2, 0.8)) {
+                           xlim = c(-1.2, 0.8),
+                           by_topic = TRUE) {
   plot_list <- list()
   
   for (i in 1:length(variable_groups)) {
@@ -222,7 +239,7 @@ plot_lm_and_bar = function(variable_groups,
       legend.position = "none"
     }
     
-    p_models <- plotMultipleModelCoeffs(models,NULL, xlab_lm, ytext = ytext,  legend.position = legend.position, xlim = xlim)
+    p_models <- plotMultipleModelCoeffs(models,NULL, xlab_lm, ytext = ytext,  legend.position = legend.position, xlim = xlim, by_topic = by_topic)
     
     p_bar <- plotMultipleBarPlots(d_bar, variable_group, xlab_bar, ylim = ylim, scales = "free", change = change, legend.position = legend.position)
     
@@ -267,8 +284,8 @@ change_consensus <- after_questions[grepl("Consensus", after_questions)]
 change_relative <- after_questions[grepl("Relative", after_questions)]
 
 # questions asking how extreme their own beliefs are relative to the population
-change_trust <- after_questions[grepl("TrustOverall", after_questions)]
-
+change_trust <- after_questions[grepl("Trust", after_questions)]
+change_trust <- change_trust["WVSTrust" != change_trust]
 
 ## After only questions
 
@@ -308,13 +325,12 @@ p_survey_qs <- ggarrange(plotlist = p_list_survey_qs,
 
 ggsave(filename = "R/visualise/plots/combined-bar-lm-post-survey.png", width = 23, height = 30, units = "cm", plot = p_survey_qs) # roughly a4 size
 
-## Belief, consensus, affpol, relative beliefs, trust 
-
+## Belief, consensus, affpol, relative beliefs, overall trust 
 
 variable_groups <- list(change_beliefs,
                         change_consensus,
                         change_relative,
-                        change_trust,
+                        "TrustOverall",
                         "AffPol"
                         )
 titles <- c(
@@ -362,4 +378,46 @@ p_change_vars <- ggarrange(
 p_change_vars
 ggsave(filename = "R/visualise/plots/combined-bar-lm-change-vars.png", width = 30, height = 37, units = "cm", plot = p_change_vars) # roughly a4 size
 
+# Follow up affective polarisation and trust measures 
+
+variable_groups <- list(
+  change_trust,
+  change_partisan
+)
+
+titles <- c(
+  "Trust Measures",
+  "Affective Polarisation Measures"
+)
+
+x_labs_lm = c(
+  "< 0 = trust less than control",
+  "< 0 = less polarised than control"
+)
+
+x_labs_bar = c(
+  "< 0 = became less trusting",
+  "< 0 = became less polarised"
+)
+
+p_list_aff_trust <- plot_lm_and_bar(
+  variable_groups,
+  x_labs_lm,
+  x_labs_bar,
+  titles,
+  d_lm,
+  d_bar,
+  change = TRUE,
+  ytext = TRUE,
+  ylim = c(-10, 10),
+  #xlim = c(-0.5,0.5),
+  by_topic = FALSE
+)
+p_aff_trust <- ggarrange(
+  plotlist = p_list_aff_trust,
+  ncol = 1,
+  heights = c(1,2)
+)
+p_aff_trust
+ggsave(filename = "R/visualise/plots/combined-bar-lm-aff-trust.png", width = 30, height = 37, units = "cm", plot = p_aff_trust) # roughly a4 size
 

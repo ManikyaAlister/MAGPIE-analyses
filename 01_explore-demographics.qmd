@@ -28,6 +28,13 @@ In this section, we will explore the characteristics of our sample.
 # load "before" survey data
 d_before <- read_csv(here("data/magpie/original/combined/before.csv"))
 
+# set factor levels
+d_before <- d_before %>%
+  mutate(Education = factor(Education, levels = c("highschool", "somecollege","undergrad", "postgrad")), # roughly ordered by number of years
+         Religion = factor(Religion, levels = c("christian", "mormon", "jewish", "muslim", "eastern", "other", "none")),
+         Condition = factor(d_before$Condition, 
+                             levels=c("Left","Control","Right"))) # order doesn't matter as long as other/none are last
+
 # set factors 
 
 # 
@@ -120,12 +127,15 @@ plot_dem_breakdown = function(data,
                               var,
                               colour_pallette = NULL,
                               legend.position = "top",
-                              legend.rows = 2) {
+                              legend.rows = 2, 
+                              title_prefix = NULL) {
   myTable <- d_before %>%
     group_by(Condition, .data[[var]]) %>%
     summarise(Number = n()) %>%
     ungroup() %>%
     filter(!is.na(.data[[var]]))
+  
+  
   
   p <- myTable %>%
     ggplot(mapping = aes(y = Condition, x = Number, fill = .data[[var]])) +
@@ -141,7 +151,7 @@ plot_dem_breakdown = function(data,
       legend.position = legend.position,
       legend.title = element_blank()
     ) +
-    labs(title = paste0(var,""))+
+    labs(title = paste0(title_prefix,var,""))+
     guides(fill = guide_legend(nrow = legend.rows)) # Specifies the legend for the 'fillr' aesthetic
 
   
@@ -162,7 +172,7 @@ plot_dem_breakdown = function(data,
 
 ```{r}
 
-p_education <- plot_dem_breakdown(d_before, "Education")
+p_education <- plot_dem_breakdown(d_before, "Education", title_prefix = "B. ")
 
 p_education <- p_education + 
     scale_fill_brewer(palette="Blues",direction=-1)
@@ -179,7 +189,7 @@ ggsave(paste0("R/visualise/plots/demographics/religion_breakdown.png"),
 ```{r}
 demographic_table(d_before, "Religion", "Condition")
 
-p_religion <- plot_dem_breakdown(d_before, "Religion")
+p_religion <- plot_dem_breakdown(d_before, "Religion", title_prefix = "C. ")
 
 p_religion <- p_religion + 
     scale_fill_brewer(palette="Purples",direction=-1)
@@ -201,7 +211,7 @@ demographic_table(d_before, "Race", "Condition")
 ```{r}
 demographic_table(d_before, "Race", "Condition")
 
-p_race <- plot_dem_breakdown(d_before, "Race")
+p_race <- plot_dem_breakdown(d_before, "Race", title_prefix = "A. ")
 
 p_race <- p_race + 
   scale_fill_brewer(palette="Greens",direction=-1) 
@@ -235,14 +245,66 @@ p_polID <- plot_dem_breakdown(d_before, "PoliticalID", colour_pallette = politic
 p_polID
 ```
 
+### Political rating 
+
+Instead of just a categorical rating, we also asked how they identified numerically. Where  6 = strong Republican, 5 = Republican, 4 = slight Republican; 3 = independent; 2 = slight Democrat, 1 = Democrat, 0 = strong Democrat. 
+
+```{r}
+
+polID_num_sum <- d_before %>%
+  group_by(Condition) %>%
+  summarise(mean = mean(PoliticalIDNum, na.rm = TRUE), sd = sd(PoliticalIDNum, na.rm = TRUE), n = n()) %>%
+  mutate(se = sd/sqrt(n()))
+
+p_politicalID_num <- polID_num_sum %>%
+  ggplot(aes(x = Condition, y = mean - 3)) +
+  geom_jitter(data = d_before, aes(y = PoliticalIDNum - 3, color = PoliticalIDNum), 
+              position = position_jitter(height = 0.1, width = 0.2), alpha = 0.6) +
+    geom_point(aes(fill = mean), size = 3, alpha = .8) +
+    geom_errorbar(aes(ymin = mean - 3 - se, ymax = mean - 3 + se), width = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_fill_gradientn(
+    name = "Political ID",
+    colors = c("#3399CC", "#9999FF", "#CC0066"),
+    values = scales::rescale(c(0, 3, 6)),
+    limits = c(0, 6),
+    breaks = c(0, 3, 6),
+    labels = c(str_wrap("Strong Democrat",width = 5), "Independent", str_wrap("Strong Republican", width = 5)),
+    guide = guide_colorbar(barwidth = 9.5, barheight = 0.5, title.position = "top")
+  ) +
+  scale_color_gradientn(
+    name = "Political ID",
+    colors = c("#3399CC", "#9999FF", "#CC0066"),
+    values = scales::rescale(c(0, 3, 6)),
+    limits = c(0, 6),
+    breaks = c(0, 3, 6),
+labels = c(str_wrap("Strong Democrat",width = 5), "Independent", str_wrap("Strong Republican", width = 5)),    guide = guide_colorbar(barwidth = 9.5, barheight = 0.5, title.position = "top")
+  ) +
+  scale_y_continuous(
+    #limits = c(-3, 3),
+    breaks = c(-3, 0, 3), 
+    labels = c(str_wrap("Strong Democrat",width = 5), "Independent", str_wrap("Strong Republican", width = 5)),
+  ) +
+  coord_flip() +
+  theme_bw() +
+  labs(y = NULL, x = "Condition", title = "D. Political ID") +
+  theme(
+    legend.position = "top",
+    legend.direction = "horizontal",
+    legend.box = "horizontal",
+    legend.title = element_blank(),
+    #legend.title.align = 0.5
+  )
+p_politicalID_num
+
+```
+
 
 ## **Location**
 
 Now we can look at where people come from. Let's use latitude and longitude for that as it is more exact (I rounded them to the closest whole number so as to keep people anonymous, so this gives their location within about a 60 mile square). 
 
 ```{r}
-d_before$Condition <- factor(d_before$Condition, 
-                             levels=c("Left","Control","Right"))
 dtemp <- d_before %>% filter(TimePoint=="Before")
 world <- ne_countries(scale = "medium", returnclass = "sf")
 d_sf <- st_as_sf(dtemp, coords = c('LON', 'LAT'))
@@ -259,7 +321,7 @@ p_location <- d_sf %>%
     scale_fill_manual(values=politicalIDColours) +
     scale_colour_manual(values=politicalIDColours) +
     facet_wrap(~Condition,ncol=3) +
-    labs(title = "Location by political ID")+
+    labs(title = "E. Location by political ID")+
     theme(strip.background = element_rect(colour = "black", fill = "white"),
           axis.title.x = element_blank(),
           axis.text.x = element_blank(), 
@@ -349,7 +411,7 @@ plotViolin = function(d, variable, title, ylab, verbose = FALSE) {
 p
 }
 
-p_initial_beliefs <- plotViolin(d_before, "Belief", "Initial Political Beliefs", "Lower = more Left-wing, Higher = more Right-wing")
+p_initial_beliefs <- plotViolin(d_before, "Belief", "F. Initial Political Beliefs", "Lower = more Left-wing, Higher = more Right-wing")
 p_initial_beliefs 
 ggsave(plot = p_initial_beliefs, filename = here("R/visualise/plots/priors/initial-beliefs.png"), width = 3, height = 10)
 
@@ -375,10 +437,10 @@ ggsave(plot = p_initial_relative, filename = here("R/visualise/plots/priors/init
 ```{r}
 #| fig.width: 13
 #| fig.height: 11
-p_demographics<- (p_race|p_education|p_religion|p_polID)
+p_demographics<- (p_race|p_education|p_religion|p_politicalID_num) + plot_layout(widths = c(1,1,1,1.3))
 p_location_polid <- (p_location)#| p_polID) + plot_layout(widths = c(3, 1))
 
-p_combined <-(p_demographics / p_location_polid/ p_initial_beliefs)+ plot_layout(heights = c(2.8,3,2.8))
+p_combined <-(p_demographics / p_location_polid/ p_initial_beliefs)+ plot_layout(heights = c(2.8,3,2.8)) & theme(text = element_text(size = 12))
 p_combined
 ggsave(plot = p_combined, filename = here("R/visualise/plots/combined-demographics.png"), width = 13, height = 11)
 ```
