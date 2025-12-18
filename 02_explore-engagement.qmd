@@ -76,8 +76,8 @@ d_engagement_summ <- bind_rows(d_base_summ, fav_summ) %>%
 
 
 # set colour sale of status plots 
-status_colours <- c("Post"="#0000CC","Reply"="#0099FF","Reblog"="#CCCCFF",
-                     "Favourite"="#9933FF", "Troll Post" = "yellow")
+status_colours <- c("Post"="darkgreen","Reply"="lightgreen","Reblog"="orange4",
+                     "Favourite"="orange", "Troll Post" = "yellow")
 ```
 ```{r}
 p_engage_total <- d_engagement_summ %>%
@@ -109,7 +109,7 @@ p_engagement_polarity <- d_engagement_summ %>%
   mutate(Polarity = ifelse(Polarity == "not_applicable" & Topic == "Friendly", "Friendly", Polarity)) %>%
   group_by(Condition, Type, Polarity) %>%
   summarise(n = sum(n)) %>%
-  filter(Type!="Sum", Polarity %in% c("Left", "Neutral", "Right", "Friendly")) %>%
+  filter(Type!="Sum", Polarity %in% c("Left", "Neutral", "Right")) %>%
   ggplot(mapping=aes(x=Polarity,y=n,fill=Type)) +
   geom_col(position="stack",orientation="x",colour="black") +
   theme_bw() +

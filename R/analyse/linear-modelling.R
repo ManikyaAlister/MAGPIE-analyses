@@ -18,7 +18,6 @@ load(here(
 
 
 # scale combined data between 0 and 1 for beta regression
-
 scale_to_01 <- function(x) {
   (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
 }
