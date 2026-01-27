@@ -104,6 +104,32 @@ ggsave(paste0("R/visualise/plots/engagement/engagement-by-condition.png"),
 ```
 
 ```{r}
+# Aggregate counts across category/topic if needed
+chi_df <- d_engagement_summ %>%
+  filter(Type !="Troll Post")%>%
+  group_by(Condition, Type) %>%
+  summarise(n = sum(n), .groups = "drop")
+
+# Convert to contingency table
+chi_table <- chi_df %>%
+  pivot_wider(
+    names_from  = Type,
+    values_from = n,
+    values_fill = 0
+  ) %>%
+  column_to_rownames("Condition") %>%
+  as.matrix()
+
+chisq_test <- chisq.test(chi_table)
+chisq_test
+
+chisq_test$stdres
+
+
+```
+
+
+```{r}
 p_engagement_polarity <- d_engagement_summ %>%
   rename("Polarity" = "category") %>%
   mutate(Polarity = ifelse(Polarity == "not_applicable" & Topic == "Friendly", "Friendly", Polarity)) %>%
@@ -132,12 +158,114 @@ ggsave(paste0("R/visualise/plots/engagement/engagement-by-polarity.png"),
        plot=p_engagement_polarity,device="png",
        width=12,height=8, units="cm")
 ```
-```{r}
 
+Below, I have run Chi Squared tests where I compare, for each respective engagement type (post, reply, etc), whether the frequency of that type was the same across polarities and conditions. For example, was the political breakdown of replies in each polarity category equal across conditions? Or were there, for example, more left-wing posts in the Left condition? 
+
+```{r}
+types <- unique(d_engagement_summ$Type)
+types <- types[types != "Troll Post"]
+
+gof_results <- list()
+
+for (t in types) {
+
+  df_t <- d_engagement_summ %>%
+    filter(
+      Type == t,
+      category != "not_applicable"
+    ) %>%
+    group_by(Condition, category) %>%
+    summarise(n = sum(n), .groups = "drop")
+
+  # run a goodness-of-fit test *within each condition*
+  gof_results[[t]] <- df_t %>%
+    group_split(Condition) %>%
+    lapply(function(df_c) {
+
+      obs <- df_c$n
+      names(obs) <- df_c$category
+
+      # equal-proportion null
+      exp <- rep(1 / length(obs), length(obs))
+
+      test <- chisq.test(obs, p = exp)
+
+      list(
+        condition = unique(df_c$Condition),
+        observed  = obs,
+        expected  = exp,
+        test      = test,
+        stdres    = test$stdres
+      )
+    })
+}
+
+gof_results
+
+```
+We can also ask whether the propostion of post polarity was the same across different conditions. E.g., was there a higher share of right wing posts and replies in the right wing condition compared to control/left?
+
+```{r}
+types <- unique(d_engagement_summ$Type)
+types <- types[types != "Troll Post"]
+
+between_results <- list()
+
+for (t in types) {
+
+  df_t <- d_engagement_summ %>%
+    filter(
+      Type == t,
+      #category != c("not_applicable")
+      category %in% c("Left", "Right")
+    ) %>%
+    group_by(Condition, category) %>%
+    summarise(n = sum(n), .groups = "drop")
+
+  chi_table <- df_t %>%
+    pivot_wider(
+      names_from = Condition,
+      values_from = n,
+      values_fill = 0
+    ) %>%
+    column_to_rownames("category") %>%
+    as.matrix()
+
+  chi_test <- chisq.test(chi_table)
+
+  between_results[[t]] <- list(
+    table = chi_table,
+    prop_by_condition = prop.table(chi_table, margin = 2),
+    test = chi_test,
+    stdres = chi_test$stdres
+  )
+}
+
+between_results
+```
+
+
+```{r}
 political_topics <- c("AI", "Climate", "Israel", "Trans")
 text_user_political <- str_wrap("User (Political)",5)
 text_user_non_political <- str_wrap("User (Non-Political)",5)
 
+d_summ_political_post_basic <- d_engagement_summ %>%
+  filter(Type == "Post" | Type == "Troll Post" ) %>%# & Condition %in% c("Left", "Right"))  %>%
+  mutate(total_engagement = n_reply + n_fav + n_reblog) %>%
+  group_by(Type) %>%
+  summarise(total_engagement = sum(total_engagement), total_posts = sum(n),
+            replies = sum(n_reply)) %>%
+  mutate(engagement_per_post = total_engagement/total_posts, replies_per_post = replies/total_posts) %>%
+  column_to_rownames(var = "Type")
+
+perc_troll_engagement_total <- round(1 - (d_summ_political_post_basic["Post","engagement_per_post"] / d_summ_political_post_basic["Troll Post","engagement_per_post"]),2)*100
+
+print(paste0("Collapsing across everything else, troll posts received ",perc_troll_engagement_total,"% more engagment than posts by regular users."))
+
+perc_troll_engagement_replies <- round(1 - (d_summ_political_post_basic["Post","replies_per_post"] / d_summ_political_post_basic["Troll Post","replies_per_post"]),2)*100
+
+print(paste0("Collapsing across everything else, troll posts received ",perc_troll_engagement_replies,"% more replies than posts by regular users."))
 
 d_summ_political_post <- d_engagement_summ %>%
   filter(Type == "Post" | Type == "Troll Post")  %>%
@@ -204,6 +332,43 @@ ggsave(paste0("R/visualise/plots/engagement/engagement-by-topic.png"),
        width=12,height=8, units="cm")
 
 ```
+
+Let's see whether the "friendly" engagement is evenly distributed across conditions. ** Change this so that it's just looking at the proportion of friendly vs. non friendly posts + replies in each condition. **
+
+```{r}
+# Step 1: Sum friendly posts/replies per condition
+friendly_counts <- d_engagement_summ %>%
+  filter(Type %in% c("Post", "Reply")) %>%      # keep only Posts and Replies
+  group_by(Condition, Topic) %>%
+  summarise(n = sum(n), .groups = "drop") %>%
+  pivot_wider(
+    names_from = Topic,
+    values_from = n,
+    values_fill = 0
+  )
+
+# Step 2: Calculate total posts/replies (friendly + non-friendly)
+friendly_counts <- friendly_counts %>%
+  mutate(
+    total = rowSums(select(., -Condition)),
+    non_friendly = total - Friendly
+  )
+
+# Step 3: Create contingency table for chi-square
+chi_table <- friendly_counts %>%
+  select(Condition, Friendly, non_friendly) %>%
+  column_to_rownames("Condition") %>%
+  as.matrix()
+
+# Step 4: Run chi-square test
+chisq_test <- chisq.test(chi_table)
+chisq_test
+
+# Standardized residuals
+chisq_test$stdres
+```
+
+
 # **Replies received**
 ```{r}
 #| plot.width: 12
