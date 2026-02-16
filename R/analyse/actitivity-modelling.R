@@ -10,8 +10,8 @@ library(dotwhisker)
 source("R/visualise/colour-palettes.R")
 
 # Control and outcome variables
-control_variables <- "ConsensusPoliticsBefore"
-outcome_variables <- "PropAligned"
+control_variables <- "TrustOverallBefore"
+outcome_variables <- "TrustOverallAfter"
 
 ############################################################
 # Utilities
