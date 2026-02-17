@@ -286,8 +286,300 @@ d_before %>%
 # Effect of posts seen on measures
 
 ```{r}
-load(here("posts_"))
+############################################################
+# Enhanced Model Running Function
+############################################################
 
-d_posts_seen <- load_and_combine_data()
+runMultipleModels <- function(data, 
+                              outcome, 
+                              control, 
+                              predictors,
+                              Bayesian = FALSE,
+                              family = gaussian(),
+                              save_models = FALSE,
+                              model_dir = "models",
+                              load_existing = FALSE,
+                              cores = 2) {
+  
+  # Create model directory if saving/loading
+  if (save_models || load_existing) {
+    if (!dir.exists(model_dir)) {
+      dir.create(model_dir, recursive = TRUE)
+    }
+  }
+  
+  purrr::map_dfr(predictors, function(pred) {
+    
+    rhs <- paste(c(control, pred), collapse = " + ")
+    formula_str <- paste0(outcome, " ~ ", rhs)
+    model_name <- paste0(outcome, "_", gsub("[^[:alnum:]]", "_", pred))
+    model_path <- file.path(model_dir, paste0(model_name, ".rds"))
+    
+    # Check if we should load existing model
+    if (load_existing && file.exists(model_path)) {
+      message("Loading existing model: ", model_name)
+      m <- readRDS(model_path)
+      
+      if (Bayesian) {
+        summ_m <- summary(m)$fixed %>%
+          mutate(model = formula_str) %>%
+          rownames_to_column(var = "term") %>%
+          rename(estimate = Estimate)
+        return(summ_m)
+      } else {
+        return(broom::tidy(m) %>% mutate(model = formula_str))
+      }
+    }
+    
+    # Fit new model
+    if (Bayesian) {
+      m <- brm(
+        data = data,
+        formula = as.formula(formula_str),
+        family = family,
+        cores = cores
+      )
+      
+      if (save_models) {
+        saveRDS(m, model_path)
+        message("Saved model: ", model_path)
+      }
+      
+      summ_m <- summary(m)$fixed %>%
+        mutate(model = formula_str) %>%
+        rownames_to_column(var = "term") %>%
+        rename(estimate = Estimate)
+      
+      return(summ_m)
+      
+    } else {
+      m <- linear_model(outcome, rhs, data)
+      
+      if (save_models) {
+        saveRDS(m, model_path)
+        message("Saved model: ", model_path)
+      }
+      
+      return(broom::tidy(m) %>% mutate(model = formula_str))
+    }
+  })
+}
+
+
+############################################################
+# Enhanced Plotting Function
+############################################################
+
+plotMultipleModelCoeffs <- function(model_output,
+                                    control_var,
+                                    title = NULL,
+                                    xlab = "Estimate",
+                                    ylab = "Model",
+                                    subtitle = NULL,
+                                    legend.position = "none",
+                                    ytext = TRUE,
+                                    xlim = NULL,
+                                    by_topic = FALSE,
+                                    keywords = c("AI", "Trans", "Climate", "Israel"),
+                                    n_comparisons = NULL,
+                                    Bayesian = FALSE,
+                                    base_size = 14,
+                                    condition_colours = NULL) {
+  
+  # Clean data
+  clean <- model_output %>%
+    filter(! term %in% c("(Intercept)","Intercept")) %>%
+    mutate(term = as.character(term)) %>%
+    group_by(model) %>%
+    mutate(has_interaction = any(str_detect(term, fixed(":")))) %>%
+    ungroup() %>%
+    # Remove control main effect only
+    filter(!term %in% c(control_var, paste0("`", control_var, "`"))) %>%
+    group_by(model, has_interaction) %>%
+    filter(if (has_interaction[1]) str_detect(term, fixed(":")) else TRUE) %>%
+    ungroup() %>%
+    mutate(condition = case_when(
+      grepl("ConditionLeft", term) ~ "Left",
+      grepl("ConditionRight", term) ~ "Right",
+      TRUE ~ "Not by condition"
+    ))
+  
+  # Apply topic grouping if requested
+  if (by_topic) {
+    clean <- clean %>%
+      mutate(
+        model_clean = str_extract(model, paste(keywords, collapse = "|")),
+        model_clean = if_else(is.na(model_clean), "Overall", model_clean),
+        model_clean = factor(model_clean, levels = c(keywords, "Overall"))
+      )
+  } else {
+    clean <- clean %>%
+      mutate(model_clean = model)
+  }
+  
+  # Compute Bonferroni adjusted CIs for frequentist models
+  if (!Bayesian && !is.null(n_comparisons)) {
+    adjusted_alpha <- 0.05 / n_comparisons
+    z_crit <- qnorm(1 - adjusted_alpha / 2)
+  }
+  
+  # Build plot
+  p <- ggplot(clean, aes(x = estimate, y = model_clean, color = condition)) +
+    geom_errorbar(
+      aes(
+        xmin = if (Bayesian) `l-95% CI` else if (!is.null(n_comparisons)) estimate - z_crit * std.error else estimate - 1.96 * std.error,
+        xmax = if (Bayesian) `u-95% CI` else if (!is.null(n_comparisons)) estimate + z_crit * std.error else estimate + 1.96 * std.error
+      ),
+      width = 0.2,
+      position = position_dodge(width = 0.6)
+    ) +
+    geom_point(
+      aes(fill = condition),
+      position = position_dodge(width = 0.6),
+      size = 3,
+      shape = 21,
+      colour = "black",
+      stroke = 0.6
+    ) +
+    geom_vline(xintercept = 0, linetype = "dashed", colour = "gray50") +
+    labs(
+      x = xlab,
+      y = ylab,
+      color = "Condition",
+      fill = "Condition",
+      title = title,
+      subtitle = subtitle
+    ) +
+    theme_minimal(base_size = base_size) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      legend.position = legend.position,
+      plot.title = element_text(hjust = 0)
+    )
+  
+  # Apply custom colors if provided
+  if (!is.null(condition_colours)) {
+    p <- p +
+      scale_color_manual(values = condition_colours) +
+      scale_fill_manual(values = condition_colours)
+  }
+  
+  # Apply x-axis limits if provided
+  if (!is.null(xlim)) {
+    p <- p + lims(x = xlim)
+  }
+  
+  # Hide y-axis text if requested
+  if (!ytext) {
+    p <- p + theme(axis.text.y = element_blank())
+  }
+  
+  return(p)
+}
+
+
+```
+
+```{r}
+library(here)
+library(dplyr)
+
+# Define if Bayesian 
+Bayesian = FALSE
+
+# Load data for different troll conditions
+load(here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))
+
+troll_datasets <- list(
+  "all_posts" = load_and_combine_data(troll = "all_posts")[["scaled"]],
+  "no_troll" = load_and_combine_data(troll = "no_troll")[["scaled"]],
+  "troll_only" = load_and_combine_data(troll = "only_troll")[["scaled"]]
+)
+
+# Predictors
+single_param_predictors <- c(
+  "Condition",
+  "prop_right",
+  "prop_left"
+)
+
+# Outcomes and controls
+outcomes <- c(
+  paste0(change_beliefs, "After"),
+  paste0(change_consensus, "After"),
+  paste0(change_trust, "After")
+)
+
+controls <- c(
+  paste0(change_beliefs, "Before"),
+  paste0(change_consensus, "Before"),
+  paste0(change_trust, "Before")
+)
+
+# Loop through each troll type
+for (troll_name in names(troll_datasets)) {
+  
+  cat("\n=== Processing:", troll_name, "===\n")
+  
+  # Loop through each outcome/control pair
+  for (i in seq_along(outcomes)) {
+    
+    outcome <- outcomes[i]
+    control <- controls[i]
+    
+    cat("  Running:", outcome, "~", control, "\n")
+    
+    # Run models
+    output <- runMultipleModels(
+      data = troll_datasets[[troll_name]],
+      outcome = outcome,
+      control = control,
+      predictors = single_param_predictors,
+      Bayesian = Bayesian
+    )
+    
+    # Plot
+    p <- plotMultipleModelCoeffs(
+      model_output = output,
+      control_var = control,
+      title = paste0(troll_name, ": ", outcome),
+      Bayesian = Bayesian
+    )
+    
+    print(p)
+  }
+}
+```
+
+```{r}
+load(here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))
+
+#. no filters applied 
+d_posts_seen <- load_and_combine_data(troll = "all_posts")[["scaled"]]
+
+# no troll initiated conversations
+d_posts_seen_no_troll <- load_and_combine_data(troll = "no_troll")[["scaled"]]
+
+# only troll initiated conversations
+d_posts_seen_troll_only <- load_and_combine_data(troll = "only_troll")[["scaled"]]
+
+
+# predictors are the same regardless of the outcomes/control
+single_param_predictors <- c(
+  " Condition",
+  " prop_right",
+  " prop_left"
+)
+
+# different parameter comparison for each outcome
+outcomes <- c(paste0(change_beliefs,"After"),paste0(change_consensus,"After"),paste0(change_trust,"After"))
+
+# controls correspond to the outcome (outcome[si] = controls[i])
+controls <- c(paste0(change_beliefs,"Before"), paste0(change_consensus,"Before"), paste0(change_trust,"After"))
+
+output <- runMultipleModels(d_posts_seen, outcomes,controls, single_param_predictors, Bayesian = TRUE)
+output
+
+plotMultipleModelCoeffs(output, control_var = "BeliefBefore", Bayesian = TRUE)
 ```
 

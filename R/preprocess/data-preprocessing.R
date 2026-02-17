@@ -42,21 +42,21 @@ d_after  <- read_csv(here("data/mastodon/files/processed/combined/after.csv")) %
 save(d_before, file = here("data/magpie/original/combined/before.Rdata"))
 save(d_after, file = here("data/magpie/original/combined/after.Rdata"))
 
- # %>% # trust overall is in d_before/after
- #  pivot_wider(
- #    id_cols = c("UserName", "Condition"),
- #    names_from = TimePoint,
- #    values_from = starts_with("Trust"),
- #    names_sep = ""
- #  )
+# # trust overall is in d_before/after
+#   d_trust_wide <- d_trust %>% pivot_wider(
+#     id_cols = c("UserName", "Condition"),
+#     names_from = TimePoint,
+#     values_from = starts_with("Trust"),
+#     names_sep = ""
+#   )
 
 # Join on Subject, automatically adding suffixes for overlapping names
 d_before_after <- full_join(d_before,
                             d_after,
                             by = c("UserName", "Condition"),
-                            suffix = c("Before", "After")) %>%
-  left_join(d_trust, 
-            by = c("UserName", "Condition"))
+                            suffix = c("Before", "After")) #%>%
+  #left_join(d_trust_wide, 
+  #          by = c("UserName", "Condition"))
 
 # get the variables that are measured both before and after
 change_vars <- colnames(d_before)[colnames(d_before) %in% colnames(d_after)]

@@ -89,26 +89,32 @@ plotMultipleModelCoeffs <- function(model_output,
 # Data loading and preparation
 ############################################################
 
-load_and_combine_data <- function(no_troll = FALSE) {
+load_and_combine_data <- function(troll = "no_troll") {
   
   # Select appropriate posts-seen data
-  posts_seen <- if (no_troll) {
+  posts_seen <- if (troll == "no_troll") {
     unique_posts_seen_by_user_no_troll
-  } else {
-    unique_posts_seen_by_user
+  } else if (troll == "all_posts") {
+    unique_posts_seen_by_user 
+  } else if (troll == "only_troll") {
+    unique_posts_seen_by_user_troll_only
   }
   
-  # Load survey data
-  load(here("data/magpie/processed/combined/survey-before-after-change.Rdata"))
+  
   
   # Load posts-seen data
   load(here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))
   
   # Load replies received data
   replies_received <- read_csv(
-    here("data/magpie/processed/combined/replies-received.csv")
-  )
+    here("data/magpie/processed/combined/replies-received.csv"))# %>%
+  # keep participants with posts-seen data
+   #filter(UserName %in% posts_seen$username)
   
+  # add participants who are missing with 
+
+  # Load survey data
+  load(here("data/magpie/processed/combined/survey-before-after-change.Rdata"))
   # Keep participants with posts-seen data
   d_survey <- d_before_after_change %>%
     filter(UserName %in% posts_seen$username)
@@ -125,8 +131,9 @@ load_and_combine_data <- function(no_troll = FALSE) {
     )
   
   # Scale numeric variables for coefficient comparison
+  # Use as.numeric(scale()) to avoid matrix columns
   combined_scaled <- combined %>%
-    mutate(across(where(is.numeric), scale))
+    mutate(across(where(is.numeric), ~as.numeric(scale(.))))
   
   list(
     scaled = combined_scaled,
@@ -175,7 +182,7 @@ all_predictors <- c(single_param_predictors)#, predictor_combos)
 ############################################################
 
 # Load full dataset (including troll-initiated conversations)
-combined_survey_scaled <- load_and_combine_data(no_troll = FALSE)[["scaled"]]
+combined_survey_scaled <- load_and_combine_data(troll = "no_troll")[["scaled"]]
 
 # Run models across all predictor specifications
 model_output <- runMultipleModels(
@@ -222,8 +229,8 @@ ggsave(path, plot, width = 16, height = 6)
 prop_seen_predictors <- all_predictors[grep("prop_", all_predictors)]
 
 # Load datasets
-combined_survey_scaled       <- load_and_combine_data(no_troll = FALSE)[["scaled"]]
-combined_survey_scaled_no_tr <- load_and_combine_data(no_troll = TRUE)[["scaled"]]
+combined_survey_scaled       <- load_and_combine_data(troll = "only_troll")[["scaled"]]
+combined_survey_scaled_no_tr <- load_and_combine_data(troll = "no_troll")[["scaled"]]
 
 # Run models (including troll-initiated conversations)
 model_output_prop_seen <- runMultipleModels(
@@ -280,29 +287,29 @@ plot
 
 ggsave(path, plot, width = 16, height = 6)
 # follow up interactions ## consensusPolitics ### consensusPoliticsBefore * Condition ### condition * prop_right # Bin consensus politics before for potting 
-combined_survey_clean <- combined_survey_clean %>% mutate(
-  ConsensusPoliticsBeforeBinned = case_when(
-    ConsensusPoliticsBefore < 50 ~ "Low Perceivceived Consensus",
-    ConsensusPoliticsBefore > 50 ~ "High Perceivceived Consensus"
-  )
-) 
+# combined_survey_clean <- combined_survey_clean %>% mutate(
+#   ConsensusPoliticsBeforeBinned = case_when(
+#     ConsensusPoliticsBefore < 50 ~ "Low Perceivceived Consensus",
+#     ConsensusPoliticsBefore > 50 ~ "High Perceivceived Consensus"
+#   )
+# ) 
 
 
-combined_survey_clean %>% ggplot(aes(
-  x = prop_right,
-  y = ConsensusPoliticsAfter,
-  colour = Condition,
-  fill = Condition
-)) + fgeom_point() + 
-  geom_smooth(method = "lm") + 
-  scale_fill_manual(values = conditionColours) +
-  scale_colour_manual(values = conditionColours) + theme_bw() 
-
-combined_survey_clean %>% ggplot(
-  aes(
-    x = ConsensusPoliticsBefore,
-    y = ConsensusPoliticsAfter,
-    colour = Condition,
-    fill = Condition
-  )
-) + geom_point() + geom_smooth(method = "lm") + scale_fill_manual(values = conditionColours) + scale_colour_manual(values = conditionColours) + theme_bw()
+# combined_survey_clean %>% ggplot(aes(
+#   x = prop_right,
+#   y = ConsensusPoliticsAfter,
+#   colour = Condition,
+#   fill = Condition
+# )) + fgeom_point() + 
+#   geom_smooth(method = "lm") + 
+#   scale_fill_manual(values = conditionColours) +
+#   scale_colour_manual(values = conditionColours) + theme_bw() 
+# 
+# combined_survey_clean %>% ggplot(
+#   aes(
+#     x = ConsensusPoliticsBefore,
+#     y = ConsensusPoliticsAfter,
+#     colour = Condition,
+#     fill = Condition
+#   )
+# ) + geom_point() + geom_smooth(method = "lm") + scale_fill_manual(values = conditionColours) + scale_colour_manual(values = conditionColours) + theme_bw()

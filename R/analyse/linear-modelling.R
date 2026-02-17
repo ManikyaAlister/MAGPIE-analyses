@@ -371,7 +371,7 @@ p_list_change_vars <- plot_lm_and_bar(
 )
 p_change_vars <- ggarrange(
   plotlist = p_list_change_vars,
-  ncol = 1,
+  ncol = 1, 
   heights = c(6, 5, 5, 1.5, 1.5, 5)
 )
 p_change_vars
