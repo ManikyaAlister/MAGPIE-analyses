@@ -13,6 +13,7 @@ library(dotwhisker)
 library(broom)
 library(ggpubr)
 library(brms)
+library(patchwork)
 
 source("R/visualise/colour-palettes.R")
 source("R/helper-functions/lm-functions.R")
@@ -32,7 +33,6 @@ load(here(
   "data/magpie/processed/combined/survey-before-after-change.Rdata"
 ))
 ```
-
 
 ```{r}
 
@@ -83,7 +83,7 @@ titles <- c(
     "A. How much did they enjoy the experience overall?",
   "B. What proportion of other users did they like?",
   "C. What proportion of accounts did they think were trolls?",
-  "D. How aligned did they think they were compared to the rest of the sample politically?",
+  "D. How politically aligned did they think they were with other participants?",
   "E. How similar was the experiment to normal social media?"
 )
 x_labs_lm <- c(
@@ -114,7 +114,18 @@ d_before_after_change_scale01 <- d_before_after_change %>%
 d_lm <- d_before_after_change_scale01
 d_bar <- d_before_after_change
 
-p_list_survey_qs <- plot_lm_and_bar(variable_groups, x_labs_lm,x_labs_bar, titles, d_lm, d_bar, change = FALSE, Bayesian = Bayesian, run_models = run_models)
+p_list_survey_qs <- plot_lm_and_bar(
+  variable_groups,
+  x_labs_lm,
+  x_labs_bar,
+  titles,
+  d_lm,
+  d_bar,
+  change = FALSE,
+  Bayesian = Bayesian,
+  run_models = FALSE,
+  ytext = FALSE
+)
 p_survey_qs <- ggarrange(plotlist = p_list_survey_qs,
                          ncol = 1,
                          common.legend = TRUE,
@@ -192,8 +203,7 @@ p_change_vars <- ggarrange(
 )
 p_change_vars
 file = paste0("R/visualise/plots/combined-bar-lm-change-vars-Bayes-",Bayesian,".png")
-ggsave(filename =file, width = 35, height = 45, units = "cm", plot = p_change_vars) # roughly a4 size
-
+ggsave(filename =file, width = 35, height = 45, units = "cm", plot = p_change_vars) 
 ```
 
 
@@ -285,301 +295,410 @@ d_before %>%
 
 # Effect of posts seen on measures
 
-```{r}
-############################################################
-# Enhanced Model Running Function
-############################################################
 
-runMultipleModels <- function(data, 
-                              outcome, 
-                              control, 
-                              predictors,
-                              Bayesian = FALSE,
-                              family = gaussian(),
-                              save_models = FALSE,
-                              model_dir = "models",
-                              load_existing = FALSE,
-                              cores = 2) {
-  
-  # Create model directory if saving/loading
-  if (save_models || load_existing) {
-    if (!dir.exists(model_dir)) {
-      dir.create(model_dir, recursive = TRUE)
-    }
-  }
-  
-  purrr::map_dfr(predictors, function(pred) {
-    
-    rhs <- paste(c(control, pred), collapse = " + ")
-    formula_str <- paste0(outcome, " ~ ", rhs)
-    model_name <- paste0(outcome, "_", gsub("[^[:alnum:]]", "_", pred))
-    model_path <- file.path(model_dir, paste0(model_name, ".rds"))
-    
-    # Check if we should load existing model
-    if (load_existing && file.exists(model_path)) {
-      message("Loading existing model: ", model_name)
-      m <- readRDS(model_path)
-      
-      if (Bayesian) {
-        summ_m <- summary(m)$fixed %>%
-          mutate(model = formula_str) %>%
-          rownames_to_column(var = "term") %>%
-          rename(estimate = Estimate)
-        return(summ_m)
-      } else {
-        return(broom::tidy(m) %>% mutate(model = formula_str))
-      }
-    }
-    
-    # Fit new model
-    if (Bayesian) {
-      m <- brm(
-        data = data,
-        formula = as.formula(formula_str),
-        family = family,
-        cores = cores
-      )
-      
-      if (save_models) {
-        saveRDS(m, model_path)
-        message("Saved model: ", model_path)
-      }
-      
-      summ_m <- summary(m)$fixed %>%
-        mutate(model = formula_str) %>%
-        rownames_to_column(var = "term") %>%
-        rename(estimate = Estimate)
-      
-      return(summ_m)
-      
-    } else {
-      m <- linear_model(outcome, rhs, data)
-      
-      if (save_models) {
-        saveRDS(m, model_path)
-        message("Saved model: ", model_path)
-      }
-      
-      return(broom::tidy(m) %>% mutate(model = formula_str))
-    }
-  })
+```{r}
+
+load(here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))
+
+d_seen_by_troll <- unique_posts_seen_by_user %>%
+  # Join the troll-only proportions
+  left_join(
+    unique_posts_seen_by_user_nontroll %>% 
+      select(username, Condition, prop_right, prop_left) %>%
+      rename(prop_right_troll = prop_right,
+             prop_left_troll = prop_left),
+    by = c("username", "Condition")
+  ) %>%
+  # Join the non-troll proportions
+  left_join(
+    unique_posts_seen_by_user_troll %>% 
+      select(username, Condition, prop_right, prop_left) %>%
+      rename(prop_right_nontroll = prop_right,
+             prop_left_nontroll = prop_left),
+    by = c("username", "Condition")
+  ) %>%
+  # Rename the all-posts proportions for clarity
+  rename(
+    prop_right_all = prop_right,
+    prop_left_all = prop_left
+  ) %>%
+  # Replace NAs with 0 (participants who saw no troll/non-troll content)
+  mutate(
+    prop_right_troll = replace_na(prop_right_troll, 0),
+    prop_left_troll = replace_na(prop_left_troll, 0),
+    prop_right_nontroll = replace_na(prop_right_nontroll, 0),
+    prop_left_nontroll = replace_na(prop_left_nontroll, 0)
+  )
+
+
+d_survey_seen_by_troll <- d_before_after_change_scale01 %>%
+  left_join(
+    d_seen_by_troll,
+    by = c(UserName = "username", "Condition")
+  )
+
+print(paste0("Posts seen data is missing for ", sum(is.na(d_survey_seen_by_troll$prop_left_nontroll)), " participants total"))
+print("Breakdown by condition: ")
+# check number of missing in each condition
+d_survey_seen_by_troll %>%
+  group_by(Condition) %>%
+  summarise(Missing = sum(is.na(prop_right_all)))
+
+summarise_vars = function(data) {
+  data %>%
+    summarise(
+      m_beliefs    = mean(BeliefBefore, na.rm = TRUE),
+      sd_beliefs   = sd(BeliefBefore, na.rm = TRUE),
+      m_polID      = mean(PoliticalIDNum, na.rm = TRUE),
+      sd_polID     = sd(PoliticalIDNum, na.rm = TRUE),
+      m_extreme    = mean(ExtremeBeliefBefore, na.rm = TRUE),
+      sd_extreme   = sd(ExtremeBeliefBefore, na.rm = TRUE),
+      m_consensus  = mean(ConsensusPoliticsBefore, na.rm = TRUE),
+      sd_consensus = sd(ConsensusPoliticsBefore, na.rm = TRUE),
+      m_age        = mean(Age, na.rm = TRUE),
+      sd_age       = sd(Age, na.rm = TRUE)
+    )
 }
 
+base_data <- d_survey_seen_by_troll %>% filter(Condition != "Control")
 
-############################################################
-# Enhanced Plotting Function
-############################################################
+summary_stats <- bind_rows(
+  base_data %>% summarise_vars() %>% mutate(group = "Full Sample"),
+  base_data %>% filter(!is.na(prop_right_all)) %>% summarise_vars() %>% mutate(group = "Posts Seen Data Available")
+)
 
-plotMultipleModelCoeffs <- function(model_output,
-                                    control_var,
-                                    title = NULL,
-                                    xlab = "Estimate",
-                                    ylab = "Model",
-                                    subtitle = NULL,
-                                    legend.position = "none",
-                                    ytext = TRUE,
-                                    xlim = NULL,
-                                    by_topic = FALSE,
-                                    keywords = c("AI", "Trans", "Climate", "Israel"),
-                                    n_comparisons = NULL,
-                                    Bayesian = FALSE,
-                                    base_size = 14,
-                                    condition_colours = NULL) {
+# Pivot to long format for plotting
+summary_long <- summary_stats %>%
+  pivot_longer(
+    cols = -group,
+    names_to = c(".value", "variable"),
+    names_pattern = "(m|sd)_(.*)"
+  )
+
+# Bar graph
+ggplot(summary_long, aes(x = group, y = m, fill = group)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
+  geom_errorbar(
+    aes(ymin = m - sd, ymax = m + sd),
+    position = position_dodge(width = 0.8),
+    width = 0.25
+  ) +
+  facet_wrap(~ variable, scales = "free_y", labeller = labeller(variable = c(
+    "beliefs"   = "Belief Before",
+    "polID"     = "Political ID Before",
+    "extreme"   = "Extremity of Beliefs Before",
+    "consensus" = "Perceptions of Consensus Before",
+    "age"       = "Age"
+  ))) +
+  labs(
+    title = "Comparison of Variables by Posts Seen Data Availability",
+    x     = NULL,
+    y     = "Mean (Scaled except for age and Political ID)",
+    fill  = "Group"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x  = element_blank(),
+    axis.ticks.x = element_blank()
+  )
   
-  # Clean data
-  clean <- model_output %>%
-    filter(! term %in% c("(Intercept)","Intercept")) %>%
-    mutate(term = as.character(term)) %>%
-    group_by(model) %>%
-    mutate(has_interaction = any(str_detect(term, fixed(":")))) %>%
-    ungroup() %>%
-    # Remove control main effect only
-    filter(!term %in% c(control_var, paste0("`", control_var, "`"))) %>%
-    group_by(model, has_interaction) %>%
-    filter(if (has_interaction[1]) str_detect(term, fixed(":")) else TRUE) %>%
-    ungroup() %>%
-    mutate(condition = case_when(
-      grepl("ConditionLeft", term) ~ "Left",
-      grepl("ConditionRight", term) ~ "Right",
-      TRUE ~ "Not by condition"
-    ))
+
+```
+
+```{r}
+d_survey_seen_by_troll %>%
+  group_by(Condition) %>%
+  summarise(
+    var_troll     = var(prop_right_troll + prop_left_troll, na.rm = TRUE),
+    mean_troll    = mean(prop_right_troll + prop_left_troll, na.rm = TRUE),
+    var_nontroll  = var(prop_right_nontroll + prop_left_nontroll, na.rm = TRUE),
+    mean_nontroll = mean(prop_right_nontroll + prop_left_nontroll, na.rm = TRUE),
+    var_all       = var(prop_right_all + prop_left_all, na.rm = TRUE),
+    mean_all      = mean(prop_right_all + prop_left_all, na.rm = TRUE)
+  )
+```
+
+## Model weights
+
+```{r}
+plotWeightsComparison = function(outcomes, title = NULL) {
+  load(here(paste0("R/analyse/lm-output/posts-seen/weights/", outcomes, ".rdata")))
   
-  # Apply topic grouping if requested
-  if (by_topic) {
-    clean <- clean %>%
+  prep_weights = function(results, name) {
+    results$weights %>%
       mutate(
-        model_clean = str_extract(model, paste(keywords, collapse = "|")),
-        model_clean = if_else(is.na(model_clean), "Overall", model_clean),
-        model_clean = factor(model_clean, levels = c(keywords, "Overall"))
+        weight     = as.numeric(weight),
+        comparison = name,
+        predictor  = case_when(
+          predictors == "Condition"                                ~ "Condition",
+          predictors == "prop_right_all"                           ~ "Right",
+          predictors == "prop_left_all"                            ~ "Left",
+          predictors == "prop_right_all + prop_left_all"           ~ "Left + Right",
+          predictors == "prop_right_nontroll"                      ~ "Right",
+          predictors == "prop_left_nontroll"                       ~ "Left",
+          predictors == "prop_right_nontroll + prop_left_nontroll" ~ "Left + Right",
+          predictors == "prop_friendly_all"                        ~ "Friendly"
+        ),
+        predictor = factor(predictor, levels = c(
+          "Condition", "Right", "Left", "Left + Right", "Friendly"
+        ))
       )
-  } else {
-    clean <- clean %>%
-      mutate(model_clean = model)
   }
   
-  # Compute Bonferroni adjusted CIs for frequentist models
-  if (!Bayesian && !is.null(n_comparisons)) {
-    adjusted_alpha <- 0.05 / n_comparisons
-    z_crit <- qnorm(1 - adjusted_alpha / 2)
+  combined_results <- bind_rows(
+    prep_weights(results_all,      "All Content"),
+    prep_weights(results_nontroll, "Non-Troll Initiated Content")
+  ) %>%
+      mutate(comparison = factor(comparison, levels = c("All Content", "Non-Troll Initiated Content")))
+  
+  
+   # Strip the variable names to their core topic so that the order can be aligned with the coeffient plots
+  keywords <- c("AI", "Trans", "Climate", "Israel")
+  
+  # check if this is a variable that needs to be broken down by topic (keyword)
+  if (any(str_extract(combined_results$variable, paste(keywords, collapse = "|")) %in% keywords)) {
+    combined_results <- combined_results %>%
+      mutate(
+        variable = str_extract(variable, paste(keywords, collapse = "|")),
+        variable = if_else(is.na(variable), "Overall", variable),
+        variable = factor(variable, levels = rev(c(
+          keywords, "Overall"
+        )))
+      )
   }
   
-  # Build plot
-  p <- ggplot(clean, aes(x = estimate, y = model_clean, color = condition)) +
-    geom_errorbar(
-      aes(
-        xmin = if (Bayesian) `l-95% CI` else if (!is.null(n_comparisons)) estimate - z_crit * std.error else estimate - 1.96 * std.error,
-        xmax = if (Bayesian) `u-95% CI` else if (!is.null(n_comparisons)) estimate + z_crit * std.error else estimate + 1.96 * std.error
-      ),
-      width = 0.2,
-      position = position_dodge(width = 0.6)
-    ) +
-    geom_point(
-      aes(fill = condition),
-      position = position_dodge(width = 0.6),
-      size = 3,
-      shape = 21,
-      colour = "black",
-      stroke = 0.6
-    ) +
-    geom_vline(xintercept = 0, linetype = "dashed", colour = "gray50") +
+  
+  
+  plot <- combined_results %>%
+    ggplot(aes(x = weight, y = variable, colour = predictor, shape = predictor)) +
+    geom_vline(xintercept = 1/5, linetype = "dashed", colour = "grey70") +
+    geom_point(size = 3, position = position_dodge(width = 0.5)) +
+    scale_x_continuous(labels = scales::percent, limits = c(0, 1)) +
+    scale_colour_brewer(palette = "Set2") +
+    facet_wrap(~ comparison) +
     labs(
-      x = xlab,
-      y = ylab,
-      color = "Condition",
-      fill = "Condition",
-      title = title,
-      subtitle = subtitle
+      x      = "Model Weight",
+      y      = NULL,
+      colour = "Predictor",
+      shape  = "Predictor",
+      title = title
     ) +
-    theme_minimal(base_size = base_size) +
+    theme_minimal(base_size = 16) +
     theme(
-      panel.grid.major.y = element_blank(),
-      legend.position = legend.position,
-      plot.title = element_text(hjust = 0)
+      panel.grid.minor = element_blank(),
+      strip.text       = element_text(face = "bold"),
+      legend.position = "top",
+      title = element_text(face = "bold")
     )
   
-  # Apply custom colors if provided
-  if (!is.null(condition_colours)) {
-    p <- p +
-      scale_color_manual(values = condition_colours) +
-      scale_fill_manual(values = condition_colours)
+  if (length(unique(combined_results$variable)) == 1){
+    plot <- plot +
+      theme(axis.text.y = element_blank())
   }
   
-  # Apply x-axis limits if provided
-  if (!is.null(xlim)) {
-    p <- p + lims(x = xlim)
-  }
+  list(plot, 
+       combined_results)
+}
+
+p_beliefs_seen <- plotWeightsComparison("change_beliefs", title = "A. Political Beliefs")
+p_beliefs_seen[[1]]
+```
+```{r}
+runCorrelations = function(data, variables, predictor) {
   
-  # Hide y-axis text if requested
-  if (!ytext) {
-    p <- p + theme(axis.text.y = element_blank())
-  }
+  variables <- paste0(variables,"Change")
+  missing_vars <- variables[!variables %in% colnames(data)]
+  if (length(missing_vars) > 0) stop(paste("Variables not found in data:", paste(missing_vars, collapse = ", ")))
+  if (!predictor %in% colnames(data)) stop(paste("Predictor not found in data:", predictor))
   
-  return(p)
+  map_df(variables, function(variable) {
+    x <- as.numeric(data[[variable]])
+    y <- as.numeric(data[[predictor]])
+    
+    test <- cor.test(x, y, use = "complete.obs")
+    
+    tibble(
+      variable = variable,
+      r        = round(test$estimate, 3),
+      t        = round(test$statistic, 3),
+      df       = test$parameter,
+      p        = round(test$p.value, 3)
+    )
+  }) %>%
+    mutate(p = ifelse(p < .001, "< .001", as.character(p)))
 }
 
 
 ```
 
+
+
 ```{r}
-library(here)
-library(dplyr)
-
-# Define if Bayesian 
-Bayesian = FALSE
-
-# Load data for different troll conditions
-load(here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))
-
-troll_datasets <- list(
-  "all_posts" = load_and_combine_data(troll = "all_posts")[["scaled"]],
-  "no_troll" = load_and_combine_data(troll = "no_troll")[["scaled"]],
-  "troll_only" = load_and_combine_data(troll = "only_troll")[["scaled"]]
-)
-
-# Predictors
-single_param_predictors <- c(
-  "Condition",
-  "prop_right",
-  "prop_left"
-)
-
-# Outcomes and controls
-outcomes <- c(
-  paste0(change_beliefs, "After"),
-  paste0(change_consensus, "After"),
-  paste0(change_trust, "After")
-)
-
-controls <- c(
-  paste0(change_beliefs, "Before"),
-  paste0(change_consensus, "Before"),
-  paste0(change_trust, "Before")
-)
-
-# Loop through each troll type
-for (troll_name in names(troll_datasets)) {
+loadFixedEffects = function(outcomes,
+                            save_dir = "R/analyse/lm-output/posts-seen/") {
   
-  cat("\n=== Processing:", troll_name, "===\n")
+  load(here(paste0(save_dir, "weights/", outcomes, ".rdata")))
   
-  # Loop through each outcome/control pair
-  for (i in seq_along(outcomes)) {
-    
-    outcome <- outcomes[i]
-    control <- controls[i]
-    
-    cat("  Running:", outcome, "~", control, "\n")
-    
-    # Run models
-    output <- runMultipleModels(
-      data = troll_datasets[[troll_name]],
-      outcome = outcome,
-      control = control,
-      predictors = single_param_predictors,
-      Bayesian = Bayesian
-    )
-    
-    # Plot
-    p <- plotMultipleModelCoeffs(
-      model_output = output,
-      control_var = control,
-      title = paste0(troll_name, ": ", outcome),
-      Bayesian = Bayesian
-    )
-    
-    print(p)
-  }
+  bind_rows(
+    results_all$fixef      %>% mutate(comparison = "All Content"),
+    results_nontroll$fixef %>% mutate(comparison = "Non-Troll Content")
+  ) %>%
+    filter(term != "Intercept") %>%
+    mutate(
+      predictor = case_when(
+        predictors == "Condition"                                ~ "Condition",
+        predictors == "prop_right_all"                           ~ "Right",
+        predictors == "prop_left_all"                            ~ "Left",
+        predictors == "prop_right_all + prop_left_all"           ~ "Left + Right",
+        predictors == "prop_right_nontroll"                      ~ "Right",
+        predictors == "prop_left_nontroll"                       ~ "Left",
+        predictors == "prop_right_nontroll + prop_left_nontroll" ~ "Left + Right",
+        predictors == "prop_friendly_all"                        ~ "Friendly"
+      ),
+      credible = sign(Q2.5) == sign(Q97.5)
+    ) %>%
+    select(comparison, variable, predictor, term, Estimate, Q2.5, Q97.5, credible) %>%
+    arrange(comparison, variable, predictor, term)
 }
+
+# check strength direction of specific predictors 
+
+# right did well for most of the beliefs except AI
+loadFixedEffects("change_beliefs") %>% 
+  filter(
+    predictor == "Right",
+    !grepl("Before", term),
+    variable != "BeliefAI"
+  )
+
+# left did well for AI
+loadFixedEffects("change_beliefs") %>% 
+  filter(
+    predictor == "Left",
+    !grepl("Before", term),
+    variable == "BeliefAI"
+  )
+```
+```{r}
+p_consensus_seen <- plotWeightsComparison("change_consensus", title = "B. Perceptions of Consensus")
+p_consensus_seen[[1]]
+```
+```{r}
+loadFixedEffects("change_consensus") %>% 
+  filter(
+    predictor %in% c("Right"),
+    !grepl("Before", term)
+    ,comparison == "All Content",
+    variable %in% c("ConsensusClimate", "ConsensusIsrael", "ConsensusPolitics")
+  )
+
+loadFixedEffects("change_consensus") %>% 
+  filter(
+    predictor %in% c("Left"),
+    !grepl("Before", term)
+    ,comparison == "All Content",
+    variable %in% c("ConsensusAI", "ConsensusTrans")
+  )
+
+loadFixedEffects("change_consensus") %>% 
+  filter(
+    predictor %in% c("Right"),
+    !grepl("Before", term)
+    ,comparison == "Non-Troll Content",
+    variable %in% c("ConsensusClimate", "ConsensusPolitics")
+  )
+
+loadFixedEffects("change_consensus") %>% 
+  filter(
+    predictor %in% c("Friendly"),
+    !grepl("Before", term)
+    ,comparison == "Non-Troll Content",
+    variable %in% c("ConsensusAI", "ConsensusTrans", "ConsensusIsrael")
+  )
+```
+
+
+```{r}
+p_trust_seen <-  plotWeightsComparison("change_trust")
+p_trust_seen[[1]]
 ```
 
 ```{r}
-load(here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))
+loadFixedEffects("change_trust") %>% 
+  filter(
+    predictor %in% c("Friendly"),
+    !grepl("Before", term),
+    #,comparison == "Non-Troll Content",
+    variable %in% c("TrustMedia")
+  )
 
-#. no filters applied 
-d_posts_seen <- load_and_combine_data(troll = "all_posts")[["scaled"]]
+loadFixedEffects("change_trust") %>% 
+  filter(
+    predictor %in% c("Left"),
+    !grepl("Before", term),
+    #,comparison == "Non-Troll Content",
+    variable %in% c("TrustPeople")
+  )
 
-# no troll initiated conversations
-d_posts_seen_no_troll <- load_and_combine_data(troll = "no_troll")[["scaled"]]
+loadFixedEffects("change_trust") %>% 
+  filter(
+    predictor %in% c("Right"),
+    !grepl("Before", term),
+    #,comparison == "Non-Troll Content",
+    variable %in% c("TrustGovt")
+  )
+```
 
-# only troll initiated conversations
-d_posts_seen_troll_only <- load_and_combine_data(troll = "only_troll")[["scaled"]]
 
+```{r}
+p_experience_seen <- plotWeightsComparison("after_only_questions")
+p_experience_seen[[1]]
+```
 
-# predictors are the same regardless of the outcomes/control
-single_param_predictors <- c(
-  " Condition",
-  " prop_right",
-  " prop_left"
+```{r}
+loadFixedEffects("after_only_questions") %>% 
+  filter(
+    predictor %in% c("Friendly"),
+    !grepl("Before", term)
+    #,comparison == "Non-Troll Content",
+   # variable %in% c("TrustGovt")
+  )
+```
+
+Belief changes were best predicted by the troll condition, not by any broader norms of conversation that may have been induced by the trolls. 
+
+```{r}
+p_beliefs_seen    <- p_beliefs_seen[[1]]
+p_consensus_seen  <- p_consensus_seen[[1]]
+p_trust_seen      <- plotWeightsComparison("trust_overall",      title = "C. Overall trust")[[1]]
+p_experience_seen <- plotWeightsComparison("overall_experience", title = "D. Overall experience")[[1]]
+p_liked_seen      <- plotWeightsComparison("prop_liked",         title = "E. Proportion of users liked")[[1]]
+p_trolls_seen     <- plotWeightsComparison("prop_trolls",        title = "F. Proportion perceived as trolls")[[1]]
+p_aligned_seen    <- plotWeightsComparison("prop_aligned",       title = "G. Perceived political alignment")[[1]]
+p_similarity_seen <- plotWeightsComparison("magpie_similarity",  title = "H. Similarity to real social media")[[1]]
+
+col_left <- (p_beliefs_seen / p_consensus_seen) +
+  plot_layout(heights = c(1, 1))
+
+col_right <- (p_trust_seen / p_experience_seen / p_liked_seen / p_trolls_seen / p_aligned_seen / p_similarity_seen) +
+  plot_layout(heights = c(1, 1, 1, 1, 1, 1))
+
+combined_seen_plot <- (col_left | col_right) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+
+ggsave(
+  plot     = combined_seen_plot,
+  filename = here("R/visualise/plots/combined-seen-plot.png"),
+  width    = 30, height = 35, units = "cm"
 )
+```
 
-# different parameter comparison for each outcome
-outcomes <- c(paste0(change_beliefs,"After"),paste0(change_consensus,"After"),paste0(change_trust,"After"))
+```{r}
+runCorrelations(d_survey_seen_by_troll, change_beliefs, "prop_right_all")
+```
 
-# controls correspond to the outcome (outcome[si] = controls[i])
-controls <- c(paste0(change_beliefs,"Before"), paste0(change_consensus,"Before"), paste0(change_trust,"After"))
-
-output <- runMultipleModels(d_posts_seen, outcomes,controls, single_param_predictors, Bayesian = TRUE)
-output
-
-plotMultipleModelCoeffs(output, control_var = "BeliefBefore", Bayesian = TRUE)
+```{r}
+runCorrelations(d_survey_seen_by_troll, change_consensus, "prop_right_all")
 ```
 

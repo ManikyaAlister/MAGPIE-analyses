@@ -91,6 +91,8 @@ plotMultipleModelCoeffs <- function(model_output,
 
 load_and_combine_data <- function(troll = "no_troll") {
   
+  load(here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))
+  
   # Select appropriate posts-seen data
   posts_seen <- if (troll == "no_troll") {
     unique_posts_seen_by_user_no_troll
@@ -286,30 +288,3 @@ path <- here(
 plot
 
 ggsave(path, plot, width = 16, height = 6)
-# follow up interactions ## consensusPolitics ### consensusPoliticsBefore * Condition ### condition * prop_right # Bin consensus politics before for potting 
-# combined_survey_clean <- combined_survey_clean %>% mutate(
-#   ConsensusPoliticsBeforeBinned = case_when(
-#     ConsensusPoliticsBefore < 50 ~ "Low Perceivceived Consensus",
-#     ConsensusPoliticsBefore > 50 ~ "High Perceivceived Consensus"
-#   )
-# ) 
-
-
-# combined_survey_clean %>% ggplot(aes(
-#   x = prop_right,
-#   y = ConsensusPoliticsAfter,
-#   colour = Condition,
-#   fill = Condition
-# )) + fgeom_point() + 
-#   geom_smooth(method = "lm") + 
-#   scale_fill_manual(values = conditionColours) +
-#   scale_colour_manual(values = conditionColours) + theme_bw() 
-# 
-# combined_survey_clean %>% ggplot(
-#   aes(
-#     x = ConsensusPoliticsBefore,
-#     y = ConsensusPoliticsAfter,
-#     colour = Condition,
-#     fill = Condition
-#   )
-# ) + geom_point() + geom_smooth(method = "lm") + scale_fill_manual(values = conditionColours) + scale_colour_manual(values = conditionColours) + theme_bw()

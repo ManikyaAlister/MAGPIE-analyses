@@ -28,8 +28,10 @@ scale_to_01 <- function(x, n = length(x)) {
 
 runMultipleLMs = function(data,
                           variables,
+                          predictors = "Condition",
                           change = FALSE,
-                          Bayesian = TRUE) {
+                          Bayesian = TRUE
+                          ) {
   model_output <-  NULL
   for (i in 1:length(variables)) {
     variable <- variables[i]
@@ -41,11 +43,10 @@ runMultipleLMs = function(data,
     }
     
     # Dynamically build formula as string
-    
     if (change_i) {
-      formula_str <- paste0(variable, "After ~ ", variable, "Before + Condition")
+      formula_str <- paste0(variable, "After ~ ", variable, "Before + ",predictors)
     } else {
-      formula_str <- paste0(variable, " ~ Condition")
+      formula_str <- paste0(variable, " ~ ", predictors)
     }
     
     if (Bayesian) {
@@ -54,7 +55,9 @@ runMultipleLMs = function(data,
         formula = as.formula(formula_str),
         family = Beta(),
         cores = 2
+      
       )
+      
       summ_m <- summary(m)$fixed %>%
         mutate(model = variable) %>%
         rownames_to_column(var = "term") %>%
@@ -75,7 +78,7 @@ runMultipleLMs = function(data,
         mutate(model = factor(model, levels = variables))
     }
     
-    
+   
   }
   model_output
 }
@@ -153,7 +156,7 @@ plotMultipleModelCoeffs = function(model_output,
     scale_fill_manual(values = conditionColours) +
     labs(
       x = xlab,
-      y = ylab,
+      y = if (ytext) ylab else NULL,
       color = "Condition",
       title = title,
       subtitle = subtitle
@@ -172,6 +175,7 @@ plotMultipleModelCoeffs = function(model_output,
       theme(axis.text.y = element_blank())
   }
   p
+
 }
 
 
@@ -303,7 +307,7 @@ plot_lm_and_bar = function(variable_groups,
       ))
     } else {
       # if (!Bayesian){
-      #   warning("Loading Bayisan output but Bayesian analysis not selected: change run_models argument to FALSE")
+      #   warning("Loading Bayesian output but Bayesian analysis not selected: change run_models argument to FALSE")
       # }
       load(here(
         paste0(
@@ -330,7 +334,7 @@ plot_lm_and_bar = function(variable_groups,
       models,
       NULL,
       xlab_lm,
-      ytext = ytext,
+      ytext = ytext, 
       legend.position = legend.position,
       xlim = xlim,
       by_topic = by_topic,
@@ -357,4 +361,230 @@ plot_lm_and_bar = function(variable_groups,
   }
   
   plot_list
+}
+
+
+# plotMultipleModelCoeffs <- function(model_output,
+#                                     control_var,
+#                                     title = NULL,
+#                                     xlab = "Estimate",
+#                                     ylab = "Model",
+#                                     legend.position = "top",
+#                                     xlim = NULL,
+#                                     by_topic = TRUE,
+#                                     Bayesian = TRUE,
+#                                     base_size = base_size) {
+#   
+#   clean <- model_output %>%
+#     filter(term != "(Intercept)") %>%
+#     mutate(term = as.character(term)) %>%
+#     group_by(model) %>%
+#     mutate(has_interaction = any(str_detect(term, fixed(":")))) %>%
+#     ungroup() %>%
+#     # remove control main effect only
+#     filter(!term %in% c(control_var, paste0("`", control_var, "`"))) %>%
+#     group_by(model, has_interaction) %>%
+#     filter(if (has_interaction[1]) str_detect(term, fixed(":")) else TRUE) %>%
+#     ungroup() %>%
+#     mutate(condition = case_when(
+#       grepl("ConditionLeft", term) ~ "Left",
+#       grepl("ConditionRight", term) ~ "Right",
+#       TRUE ~ "Not by condition"
+#     ))
+#   
+#   ggplot(clean, aes(x = estimate, y = model, colour = condition)) +
+#     geom_point(size = 3, position = position_dodge(width = 0.6)) +
+#     geom_errorbar(
+#       aes(
+#         xmin = estimate - 1.96 * std.error,
+#         xmax = estimate + 1.96 * std.error
+#       ),
+#       width = 0.2,
+#       position = position_dodge(width = 0.6)
+#     ) +
+#     geom_vline(xintercept = 0, linetype = "dashed", colour = "gray50") +
+#     labs(x = xlab, y = ylab, title = title) +
+#     theme_minimal(base_size = 14) +
+#     theme(
+#       panel.grid.major.y = element_blank(),
+#       legend.position = "none"
+#     )
+# }
+
+# load and combine posts seen data with survey data
+load_and_combine_data <- function(troll = "no_troll") {
+  
+  load(here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))
+  
+  # Select appropriate posts-seen data
+  posts_seen <- if (troll == "no_troll") {
+    unique_posts_seen_by_user_no_troll
+  } else if (troll == "all_posts") {
+    unique_posts_seen_by_user 
+  } else if (troll == "only_troll") {
+    unique_posts_seen_by_user_troll_only
+  }
+  
+  
+  
+  # Load posts-seen data
+  load(here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))
+  
+  # Load replies received data
+  replies_received <- read_csv(
+    here("data/magpie/processed/combined/replies-received.csv"))# %>%
+  # keep participants with posts-seen data
+  #filter(UserName %in% posts_seen$username)
+  
+  # add participants who are missing with 
+  
+  # Load survey data
+  load(here("data/magpie/processed/combined/survey-before-after-change.Rdata"))
+  # Keep participants with posts-seen data
+  d_survey <- d_before_after_change %>%
+    filter(UserName %in% posts_seen$username)
+  
+  # Merge datasets
+  combined <- d_survey %>%
+    left_join(
+      posts_seen,
+      by = c("UserName" = "username", "Condition")
+    ) %>%
+    left_join(
+      replies_received,
+      by = c("UserName", "Condition")
+    )
+  
+  # Scale numeric variables for coefficient comparison
+  # Use as.numeric(scale()) to avoid matrix columns
+  combined_scaled <- combined %>%
+    mutate(across(where(is.numeric), ~as.numeric(scale(.))))
+  
+  list(
+    scaled = combined_scaled,
+    unscaled = combined
+  )
+}
+
+runModelComparisons = function(data,
+                               variables,
+                               comparison_models,
+                               predictor_names,
+                               change = FALSE,
+                               run_models = TRUE,
+                               skip_fitted = TRUE,
+                               save_dir = "R/analyse/lm-output/posts-seen/"
+) {
+  
+  models_dir <- file.path(save_dir, "models")
+  if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  make_label = function(predictor_str) {
+    terms <- trimws(strsplit(predictor_str, "\\+")[[1]])
+    paste(names(predictor_names)[match(terms, predictor_names)], collapse = "_")
+  }
+  
+  labels <- sapply(comparison_models, make_label)
+  legend <- data.frame(label = labels, predictors = comparison_models)
+  
+  for (j in seq_along(comparison_models)) {
+    predictors <- comparison_models[j]
+    label      <- labels[j]
+    base_model <- NULL
+    
+    print(paste0("Running models with predictors: ", predictors))
+    
+    for (i in seq_along(variables)) {
+      variable   <- variables[i]
+      change_i   <- if (length(change) > 1) change[i] else change
+      model_path <- file.path(models_dir, paste0(variable, "__", label, ".rdata"))
+      
+      print(paste0("Running for outcome variable: ", variable))
+      
+      if (skip_fitted && file.exists(model_path)) {
+        print(paste0("Skipping — loading saved loo"))
+        e <- new.env()
+        load(model_path, envir = e)  # restores `loo_to_save`
+        # base_model stays NULL — update() won't work but we don't need it for skipped models
+      } else {
+        if (change_i) {
+          formula_str <- paste0(variable, "After ~ ", variable, "Before + ", predictors)
+        } else {
+          formula_str <- paste0(variable, " ~ ", predictors)
+        }
+        
+        if (is.null(base_model)) {
+          base_model <- brm(
+            data    = data,
+            formula = as.formula(formula_str),
+            family  = Beta(),
+            cores   = 2
+          )
+        } else {
+          base_model <- update(base_model, formula = as.formula(formula_str), newdata = data)
+        }
+        
+        base_model <- add_criterion(base_model, "loo")
+        loo_to_save    <- base_model$criteria$loo
+        fixef_to_save  <- fixef(base_model) %>% 
+          as.data.frame() %>% 
+          rownames_to_column("term")
+        save(loo_to_save, fixef_to_save, file = model_path)
+      }
+      
+      # Free memory after each model is saved
+      rm(base_model)
+      base_model <- NULL
+      gc()
+    }
+  }
+}
+
+
+computeModelWeights = function(variables,
+                               legend,
+                               save_dir = "R/analyse/lm-output/posts-seen/"
+) {
+  
+  models_dir     <- file.path(save_dir, "models")
+  weights_output <- NULL
+  fixef_output   <- NULL
+  
+  for (variable in variables) {
+    loo_objects <- list()
+    
+    for (j in seq_len(nrow(legend))) {
+      model_path <- file.path(models_dir, paste0(variable, "__", legend$label[j], ".rdata"))
+      
+      if (!file.exists(model_path)) {
+        warning(paste0("Missing model file: ", basename(model_path), " — skipping"))
+        next
+      }
+      
+      e <- new.env()
+      load(model_path, envir = e)
+      loo_objects[[legend$predictors[j]]] <- e$loo_to_save
+      
+      # extract fixed effects if available
+      if (exists("fixef_to_save", envir = e)) {
+        fixef_output <- bind_rows(fixef_output,
+                                  e$fixef_to_save %>% mutate(predictors = legend$predictors[j], variable = variable)
+        )
+      }
+    }
+    
+    weights_i <- loo_model_weights(unname(loo_objects), method = "pseudobma") %>%
+      as.numeric() %>%
+      data.frame(weight = .) %>%
+      mutate(
+        predictors = names(loo_objects),
+        weight     = weight / sum(weight)
+      ) %>%
+      left_join(legend, by = "predictors") %>%
+      mutate(variable = variable)
+    
+    weights_output <- bind_rows(weights_output, weights_i)
+  }
+  
+  list(weights = weights_output, fixef = fixef_output)
 }
