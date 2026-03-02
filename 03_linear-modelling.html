@@ -64,8 +64,11 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
-<section id="post-experiment-experience-questions" class="level1">
-<h1><strong>Post experiment experience questions</strong></h1>
+<section id="condition-effects" class="level1">
+<h1>Condition Effects</h1>
+<p>Bayesian linear models examining how variables in the troll condition differed relative to the control.</p>
+<section id="post-experiment-experience-questions" class="level2">
+<h2 class="anchored" data-anchor-id="post-experiment-experience-questions">Post experiment experience questions</h2>
 <div class="cell">
 <div class="cell-output-display">
 <div>
@@ -75,8 +78,9 @@ ul.task-list li input[type="checkbox"] {
 </div>
 </div>
 </div>
-<section id="follow-up-enjoyment-with-prior-beliefs-by-condition" class="level2">
-<h2 class="anchored" data-anchor-id="follow-up-enjoyment-with-prior-beliefs-by-condition">Follow up enjoyment with prior beliefs by condition</h2>
+<section id="did-enjoyment-of-the-platform-correlate-with-prior-beliefs-in-each-condition" class="level3">
+<h3 class="anchored" data-anchor-id="did-enjoyment-of-the-platform-correlate-with-prior-beliefs-in-each-condition">Did enjoyment of the platform correlate with prior beliefs in each condition?</h3>
+<p>Enjoyment only correlated with prior beliefs in the Right condition: those with more right wing initial beliefs enjoyed the right wing condition more.</p>
 <div class="cell">
 <div class="cell-output cell-output-stdout">
 <pre><code>$Control
@@ -123,8 +127,9 @@ sample estimates:
 </div>
 </section>
 </section>
-<section id="beforeafter-change-variables" class="level1">
-<h1><strong>Before/After Change variables</strong></h1>
+<section id="beforeafter-change-variables" class="level2">
+<h2 class="anchored" data-anchor-id="beforeafter-change-variables">Before/After Change variables</h2>
+<p>Bayesian linear modelling for the variables that were measured both before and after the experiment. The general structure of the models was: <code>Variable After ~ Variable Before + Condition</code>, thus essentially measuring the change in each variable by condition.</p>
 <div class="cell">
 <div class="cell-output-display">
 <div>
@@ -134,6 +139,8 @@ sample estimates:
 </div>
 </div>
 </div>
+<section id="full-trust-and-affective-polarisation-plots" class="level3">
+<h3 class="anchored" data-anchor-id="full-trust-and-affective-polarisation-plots">Full trust and affective polarisation plots</h3>
 <div class="cell">
 <div class="cell-output-display">
 <div>
@@ -143,6 +150,8 @@ sample estimates:
 </div>
 </div>
 </div>
+</section>
+</section>
 <section id="initial-values-of-measures" class="level2">
 <h2 class="anchored" data-anchor-id="initial-values-of-measures">Initial values of measures</h2>
 <section id="change-variables" class="level3">
@@ -187,38 +196,13 @@ sample estimates:
 </div>
 </div>
 </section>
-<section id="follow-up-unintuitive-trust" class="level2">
-<h2 class="anchored" data-anchor-id="follow-up-unintuitive-trust">Follow up unintuitive trust</h2>
-<div class="cell">
-<div class="cell-output cell-output-stdout">
-<pre><code># A tibble: 18 × 3
-# Groups:   Condition [3]
-   Condition Trust_Type     Mean
-   &lt;chr&gt;     &lt;chr&gt;         &lt;dbl&gt;
- 1 Control   TrustBusiness  39.3
- 2 Control   TrustGovt      37.2
- 3 Control   TrustMedia     36.4
- 4 Control   TrustOverall   44.9
- 5 Control   TrustPeople    57.5
- 6 Control   TrustUnis      54.1
- 7 Left      TrustBusiness  38.0
- 8 Left      TrustGovt      36.0
- 9 Left      TrustMedia     36.0
-10 Left      TrustOverall   43.7
-11 Left      TrustPeople    53.5
-12 Left      TrustUnis      55.1
-13 Right     TrustBusiness  34.0
-14 Right     TrustGovt      34.4
-15 Right     TrustMedia     30.7
-16 Right     TrustOverall   40.2
-17 Right     TrustPeople    50.7
-18 Right     TrustUnis      50.9</code></pre>
-</div>
-</div>
 </section>
-</section>
-<section id="effect-of-posts-seen-on-measures" class="level1">
-<h1>Effect of posts seen on measures</h1>
+<section id="predicting-changes-in-measures-as-a-function-of-the-types-of-posts-seen" class="level1">
+<h1>Predicting changes in measures as a function of the types of posts seen</h1>
+<p>We were also able to collect data on the exact posts that people saw. This can provide insight into what it was that affected participants’ experiences and was shifting people’s beliefs and perceptions of consensus in the troll conditions.</p>
+<section id="comparing-sample-characteristics-for-full-sample-versus-sample-with-posts-seen-data-available" class="level2">
+<h2 class="anchored" data-anchor-id="comparing-sample-characteristics-for-full-sample-versus-sample-with-posts-seen-data-available">Comparing sample characteristics for full sample versus sample with posts seen data available</h2>
+<p>Unfortunately, we were unable to collect posts seen data for all participants. So we wanted to check to make sure that the sample with and without posts seen were similar.</p>
 <div class="cell">
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] "Posts seen data is missing for 69 participants total"</code></pre>
@@ -237,7 +221,7 @@ sample estimates:
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="03_lm-condition-effects_files/figure-html/unnamed-chunk-12-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="03_lm-condition-effects_files/figure-html/unnamed-chunk-11-1.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
@@ -252,45 +236,92 @@ sample estimates:
 3 Right       0.00934      0.557       0.0893         0.849 0.00798    0.620</code></pre>
 </div>
 </div>
-<section id="model-weights" class="level2">
-<h2 class="anchored" data-anchor-id="model-weights">Model weights</h2>
+</section>
+<section id="what-impact-does-seeing-troll-initated-content-have-on-our-measures-and-how-does-this-compare-to-condition-effects" class="level2">
+<h2 class="anchored" data-anchor-id="what-impact-does-seeing-troll-initated-content-have-on-our-measures-and-how-does-this-compare-to-condition-effects">What impact does seeing troll-initated content have on our measures? And how does this compare to condition effects?</h2>
+<p>We tested whether changes in each measure could be predicted by the type of content people saw: the proportion of friendly content, right-wing content, left-wing content, or both. As a baseline, we included a model based solely on participants’ assigned condition.</p>
+<p>We then repeated this analysis excluding content from troll-initiated conversations (defined as troll posts and any participant replies to those posts), to test whether the overall shift in discourse predicted outcomes above and beyond direct troll influence. Because troll posts were absent from the control condition by design, this analysis was restricted to participants in the and conditions. Troll-initiated content accounted for approximately 16% of posts seen by users in these conditions.</p>
+<p>To compare the relative importance of each predictor, we computed pseudo-Bayesian model averaging (PseudoBMA) weights, which assign weights to models proportional to their estimated out-of-sample predictive accuracy via leave-one-out cross-validation (LOO-CV). Higher weights indicate greater support for that predictor; if weights are clustered near the dashed chance line, all predictors perform similarly. We focus specifically on how content-based predictors (<code>Right'',</code>Left’‘, <code>Right $+$ Left'',</code>Friendly’’) compared to condition assignment, and how this pattern changed when troll-initiated content was excluded. This analysis was not conducted for relative belief or affective polarisation measures, as these showed no credible condition effects.</p>
 <div class="cell">
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="03_lm-condition-effects_files/figure-html/unnamed-chunk-14-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="03_lm-condition-effects_files/figure-html/unnamed-chunk-13-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Below shows the coefficients of the models shown in the plot above, so that we can interpret the directions of the effects.</p>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>        variable                term   Estimate         Q2.5     Q97.5
+1         Belief      prop_right_all 0.38357237  0.131133725 0.6226170
+2         Belief      prop_right_all 0.36898495  0.097878143 0.6366161
+3         Belief prop_right_nontroll 0.41792732  0.024904969 0.8095369
+4         Belief prop_right_nontroll 0.41747710  0.022022539 0.8159848
+5  BeliefClimate      prop_right_all 0.64424228 -0.040060340 1.3302225
+6  BeliefClimate      prop_right_all 0.58295839 -0.190455818 1.3722240
+7  BeliefClimate prop_right_nontroll 0.05453933 -1.047135873 1.1497061
+8  BeliefClimate prop_right_nontroll 0.05231061 -1.042895385 1.1964888
+9   BeliefIsrael      prop_right_all 0.78614529  0.002160981 1.5571046
+10  BeliefIsrael      prop_right_all 0.69008536 -0.187810461 1.5878422
+11  BeliefIsrael prop_right_nontroll 0.38616761 -0.939617479 1.7350034
+12  BeliefIsrael prop_right_nontroll 0.40246930 -0.884045896 1.6832911
+13   BeliefTrans      prop_right_all 0.71996266 -0.143145958 1.5578907
+14   BeliefTrans      prop_right_all 0.73807652 -0.189458873 1.6880202
+15   BeliefTrans prop_right_nontroll 1.05743333 -0.354226448 2.5123924
+16   BeliefTrans prop_right_nontroll 0.99005080 -0.388930928 2.4217904</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>  variable               term   Estimate      Q2.5       Q97.5
+1 BeliefAI      prop_left_all -0.6843320 -1.294245 -0.07954381
+2 BeliefAI      prop_left_all -0.6060336 -1.294191  0.07967558
+3 BeliefAI prop_left_nontroll -0.4458092 -1.107875  0.21105378
+4 BeliefAI prop_left_nontroll -0.4332912 -1.095905  0.24127306</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="03_lm-condition-effects_files/figure-html/unnamed-chunk-15-1.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
 </div>
 <div class="cell">
 <div class="cell-output cell-output-stdout">
-<pre><code>         comparison      variable predictor                term   Estimate
-1       All Content        Belief     Right      prop_right_all 0.38357237
-2       All Content BeliefClimate     Right      prop_right_all 0.64424228
-3       All Content  BeliefIsrael     Right      prop_right_all 0.78614529
-4       All Content   BeliefTrans     Right      prop_right_all 0.71996266
-5 Non-Troll Content        Belief     Right prop_right_nontroll 0.41792732
-6 Non-Troll Content BeliefClimate     Right prop_right_nontroll 0.05453933
-7 Non-Troll Content  BeliefIsrael     Right prop_right_nontroll 0.38616761
-8 Non-Troll Content   BeliefTrans     Right prop_right_nontroll 1.05743333
-          Q2.5     Q97.5 credible
-1  0.131133725 0.6226170     TRUE
-2 -0.040060340 1.3302225    FALSE
-3  0.002160981 1.5571046     TRUE
-4 -0.143145958 1.5578907    FALSE
-5  0.024904969 0.8095369     TRUE
-6 -1.047135873 1.1497061    FALSE
-7 -0.939617479 1.7350034    FALSE
-8 -0.354226448 2.5123924    FALSE</code></pre>
+<pre><code>            variable                term   Estimate      Q2.5       Q97.5
+1   ConsensusClimate      prop_right_all -1.6731141 -2.977130 -0.41391319
+2   ConsensusClimate      prop_right_all -1.4502460 -2.992506  0.02599957
+3   ConsensusClimate prop_right_nontroll -2.1406187 -4.317341  0.02371720
+4   ConsensusClimate prop_right_nontroll -2.2081755 -4.389379  0.02017960
+5    ConsensusIsrael      prop_right_all -0.9691463 -2.103849  0.19694529
+6    ConsensusIsrael      prop_right_all -0.6861495 -2.173096  0.78091454
+7    ConsensusIsrael prop_right_nontroll  0.4064243 -1.687148  2.45789776
+8    ConsensusIsrael prop_right_nontroll  0.4234099 -1.587142  2.51337499
+9  ConsensusPolitics      prop_right_all -0.7455760 -1.838563  0.36982060
+10 ConsensusPolitics      prop_right_all -0.7475317 -2.021462  0.56158204
+11 ConsensusPolitics prop_right_nontroll -2.7325737 -4.496405 -0.90713160
+12 ConsensusPolitics prop_right_nontroll -2.7130128 -4.421941 -0.99848238</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>         comparison variable predictor               term   Estimate      Q2.5
-1       All Content BeliefAI      Left      prop_left_all -0.6843320 -1.294245
-2 Non-Troll Content BeliefAI      Left prop_left_nontroll -0.4458092 -1.107875
-        Q97.5 credible
-1 -0.07954381     TRUE
-2  0.21105378    FALSE</code></pre>
+<pre><code>        variable          term   Estimate       Q2.5     Q97.5
+1    ConsensusAI prop_left_all -0.9308079 -2.0421590 0.1221907
+2    ConsensusAI prop_left_all -0.8874552 -2.1780373 0.4115884
+3 ConsensusTrans prop_left_all  2.2601810  1.0169391 3.5315037
+4 ConsensusTrans prop_left_all  2.2339430  0.8391869 3.7010092</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>           variable                term  Estimate      Q2.5      Q97.5
+1  ConsensusClimate prop_right_nontroll -2.140619 -4.317341  0.0237172
+2  ConsensusClimate prop_right_nontroll -2.208176 -4.389379  0.0201796
+3 ConsensusPolitics prop_right_nontroll -2.732574 -4.496405 -0.9071316
+4 ConsensusPolitics prop_right_nontroll -2.713013 -4.421941 -0.9984824</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] variable term     Estimate Q2.5     Q97.5   
+&lt;0 rows&gt; (or 0-length row.names)</code></pre>
 </div>
 </div>
 <div class="cell">
@@ -304,40 +335,23 @@ sample estimates:
 </div>
 <div class="cell">
 <div class="cell-output cell-output-stdout">
-<pre><code>   comparison          variable predictor           term   Estimate      Q2.5
-1 All Content  ConsensusClimate     Right prop_right_all -1.6731141 -2.977130
-2 All Content   ConsensusIsrael     Right prop_right_all -0.9691463 -2.103849
-3 All Content ConsensusPolitics     Right prop_right_all -0.7455760 -1.838563
-       Q97.5 credible
-1 -0.4139132     TRUE
-2  0.1969453    FALSE
-3  0.3698206    FALSE</code></pre>
+<pre><code>    variable              term  Estimate      Q2.5     Q97.5
+1 TrustMedia prop_friendly_all -1.410694 -3.700553 0.6908346
+2 TrustMedia prop_friendly_all -1.410694 -3.700553 0.6908346</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>   comparison       variable predictor          term   Estimate      Q2.5
-1 All Content    ConsensusAI      Left prop_left_all -0.9308079 -2.042159
-2 All Content ConsensusTrans      Left prop_left_all  2.2601810  1.016939
-      Q97.5 credible
-1 0.1221907    FALSE
-2 3.5315037     TRUE</code></pre>
+<pre><code>     variable               term  Estimate        Q2.5    Q97.5
+1 TrustPeople      prop_left_all 0.5419320 -0.37104235 1.448309
+2 TrustPeople      prop_left_all 0.8035888 -0.29241395 1.878246
+3 TrustPeople prop_left_nontroll 1.1481463  0.14810053 2.202613
+4 TrustPeople prop_left_nontroll 1.1313425  0.06602155 2.267030</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>         comparison          variable predictor                term  Estimate
-1 Non-Troll Content  ConsensusClimate     Right prop_right_nontroll -2.140619
-2 Non-Troll Content ConsensusPolitics     Right prop_right_nontroll -2.732574
-       Q2.5      Q97.5 credible
-1 -4.317341  0.0237172    FALSE
-2 -4.496405 -0.9071316     TRUE</code></pre>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>         comparison        variable predictor              term  Estimate
-1 Non-Troll Content     ConsensusAI  Friendly prop_friendly_all  1.464252
-2 Non-Troll Content ConsensusIsrael  Friendly prop_friendly_all -1.854725
-3 Non-Troll Content  ConsensusTrans  Friendly prop_friendly_all -2.977006
-        Q2.5      Q97.5 credible
-1 -0.3562865  3.3089598    FALSE
-2 -4.7578840  0.8532314    FALSE
-3 -5.4284099 -0.8250210     TRUE</code></pre>
+<pre><code>   variable                term Estimate      Q2.5    Q97.5
+1 TrustGovt      prop_right_all 1.629265 0.3550292 2.816993
+2 TrustGovt      prop_right_all 1.608050 0.2358904 2.988417
+3 TrustGovt prop_right_nontroll 2.213216 0.2501068 4.031995
+4 TrustGovt prop_right_nontroll 2.220368 0.3364434 4.164783</code></pre>
 </div>
 </div>
 <div class="cell">
@@ -351,90 +365,20 @@ sample estimates:
 </div>
 <div class="cell">
 <div class="cell-output cell-output-stdout">
-<pre><code>         comparison   variable predictor              term  Estimate      Q2.5
-1       All Content TrustMedia  Friendly prop_friendly_all -1.410694 -3.700553
-2 Non-Troll Content TrustMedia  Friendly prop_friendly_all -1.410694 -3.700553
-      Q97.5 credible
-1 0.6908346    FALSE
-2 0.6908346    FALSE</code></pre>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>         comparison    variable predictor               term Estimate
-1       All Content TrustPeople      Left      prop_left_all 0.541932
-2 Non-Troll Content TrustPeople      Left prop_left_nontroll 1.148146
-        Q2.5    Q97.5 credible
-1 -0.3710423 1.448309    FALSE
-2  0.1481005 2.202613     TRUE</code></pre>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>         comparison  variable predictor                term Estimate      Q2.5
-1       All Content TrustGovt     Right      prop_right_all 1.629265 0.3550292
-2 Non-Troll Content TrustGovt     Right prop_right_nontroll 2.213216 0.2501068
-     Q97.5 credible
-1 2.816993     TRUE
-2 4.031995     TRUE</code></pre>
-</div>
-</div>
-<div class="cell">
-<div class="cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="03_lm-condition-effects_files/figure-html/unnamed-chunk-21-1.png" class="img-fluid figure-img" width="672"></p>
-</figure>
-</div>
-</div>
-</div>
-<div class="cell">
-<div class="cell-output cell-output-stdout">
-<pre><code>          comparison          variable predictor              term   Estimate
-1        All Content  MagpieSimilarity  Friendly prop_friendly_all -1.6808830
-2        All Content OverallExperience  Friendly prop_friendly_all -0.2589796
-3        All Content       PropAligned  Friendly prop_friendly_all -2.7068409
-4        All Content         PropLiked  Friendly prop_friendly_all -0.1157403
-5        All Content        PropTrolls  Friendly prop_friendly_all  1.3616180
-6  Non-Troll Content  MagpieSimilarity  Friendly prop_friendly_all -1.6808830
-7  Non-Troll Content OverallExperience  Friendly prop_friendly_all -0.2589796
-8  Non-Troll Content       PropAligned  Friendly prop_friendly_all -2.7068409
-9  Non-Troll Content         PropLiked  Friendly prop_friendly_all -0.1157403
-10 Non-Troll Content        PropTrolls  Friendly prop_friendly_all  1.3616180
-        Q2.5      Q97.5 credible
-1  -2.747392 -0.6741853     TRUE
-2  -0.974516  0.4058715    FALSE
-3  -5.329490 -0.2997402     TRUE
-4  -2.809002  2.7200964    FALSE
-5  -1.228039  3.9770383    FALSE
-6  -2.747392 -0.6741853     TRUE
-7  -0.974516  0.4058715    FALSE
-8  -5.329490 -0.2997402     TRUE
-9  -2.809002  2.7200964    FALSE
-10 -1.228039  3.9770383    FALSE</code></pre>
+<pre><code>            variable              term   Estimate      Q2.5      Q97.5
+1   MagpieSimilarity prop_friendly_all -1.6808830 -2.747392 -0.6741853
+2   MagpieSimilarity prop_friendly_all -1.6808830 -2.747392 -0.6741853
+3  OverallExperience prop_friendly_all -0.2589796 -0.974516  0.4058715
+4  OverallExperience prop_friendly_all -0.2589796 -0.974516  0.4058715
+5        PropAligned prop_friendly_all -2.7068409 -5.329490 -0.2997402
+6        PropAligned prop_friendly_all -2.7068409 -5.329490 -0.2997402
+7          PropLiked prop_friendly_all -0.1157403 -2.809002  2.7200964
+8          PropLiked prop_friendly_all -0.1157403 -2.809002  2.7200964
+9         PropTrolls prop_friendly_all  1.3616180 -1.228039  3.9770383
+10        PropTrolls prop_friendly_all  1.3616180 -1.228039  3.9770383</code></pre>
 </div>
 </div>
 <p>Belief changes were best predicted by the troll condition, not by any broader norms of conversation that may have been induced by the trolls.</p>
-<div class="cell">
-<div class="cell-output cell-output-stdout">
-<pre><code># A tibble: 5 × 5
-  variable                r     t    df p    
-  &lt;chr&gt;               &lt;dbl&gt; &lt;dbl&gt; &lt;int&gt; &lt;chr&gt;
-1 BeliefAIChange      0.104 1.62    240 0.107
-2 BeliefClimateChange 0.064 0.992   240 0.322
-3 BeliefIsraelChange  0.124 1.94    240 0.054
-4 BeliefTransChange   0.16  2.51    240 0.013
-5 BeliefChange        0.215 3.40    240 0.001</code></pre>
-</div>
-</div>
-<div class="cell">
-<div class="cell-output cell-output-stdout">
-<pre><code># A tibble: 5 × 5
-  variable                     r      t    df p    
-  &lt;chr&gt;                    &lt;dbl&gt;  &lt;dbl&gt; &lt;int&gt; &lt;chr&gt;
-1 ConsensusPoliticsChange -0.09  -1.40    240 0.164
-2 ConsensusAIChange        0.042  0.646   240 0.519
-3 ConsensusTransChange    -0.095 -1.47    240 0.142
-4 ConsensusClimateChange  -0.153 -2.40    240 0.017
-5 ConsensusIsraelChange   -0.085 -1.32    240 0.187</code></pre>
-</div>
-</div>
 </section>
 </section>
 
