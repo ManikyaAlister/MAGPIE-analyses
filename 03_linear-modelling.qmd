@@ -82,28 +82,35 @@ n_comparison = 17 + length(after_only_questions)
 ```{r}
 #| fig.width: 13
 #| fig.height: 15
+# Andy adds hack here to put in the right order
+after_only_questions <- c("OverallExperience","PropLiked","PropTrolls",
+                          "PropAligned","MagpieSimilarity")
+
 variable_groups <- after_only_questions
+
+
+
 titles <- c(
     "A. How much did they enjoy the experience overall?",
-  "B. What proportion of other users did they like?",
+      "B. What proportion of other users did they like?",
   "C. What proportion of accounts did they think were trolls?",
-  "D. How politically aligned did they think they were with other participants?",
+      "D. How politically aligned did they think they were with other participants?",
   "E. How similar was the experiment to normal social media?"
 )
 x_labs_lm <- c(
     "< 0 = enjoyed less compared to control",
-  "<  0 = liked fewer other users compared to control",
+   "<  0 = liked fewer other users compared to control",
   "< 0 = fewer trolls compared to control",
-  "< 0 = less politicaly aligned compared to control",
+   "< 0 = less politicaly aligned compared to control",
   "< 0 = experience less similar compared to control"
 )
 
 x_labs_bar <- c(
-    "Lower = less enjoyment",
-  "Lower = liked fewer participants",
-  "Lower = fewer trolls",
-  "Lower = less aligned politically",
-  "Lower = less similar to social media"
+    "lower = less enjoyment",
+       "lower = liked fewer participants",
+  "lower = fewer trolls",
+      "lower = less aligned politically",
+  "lower = less similar to social media"
 )
 
 # scale data to between 0 and 1 
@@ -158,13 +165,14 @@ Bayesian linear modelling for the variables that were measured both before and a
 #| fig.height: 15
 variable_groups <- list(change_beliefs,
                         change_consensus,
-                        change_relative,
+                        #change_relative,
+                        "RelativePolitics",
                         "TrustOverall",
                         "AffPol"
                         )
 titles <- c(
   "A. Political beliefs", 
-  "B. Perceptions of conesnsus",
+  "B. Perceptions of consensus",
   "C. Perceived own beliefs relative to population",
   "D. Overall trust in government and other institutions",
   "E. Affective polarisation"
@@ -172,19 +180,19 @@ titles <- c(
 #: 'Where would you classify your overall political beliefs, relative to most people in the US?'
 #'To what extent do you think that most people in the US generally agree with each other about their overall political beliefs?'
 x_labs_lm <- c(
-  "< 0 = more left wing than control",
-  "< 0 = less belief there is a consensus compared to control",
-  "< 0 = beliefs more left wing relative to population compared to control",
+  "< 0 = beliefs more left wing than control",
+  "< 0 = less belief in consensus than control",
+  "< 0 = perceive beliefs more left wing than control",
   "< 0 = less trusting than control",
-  "< 0 = less polarised than control"
+  "< 0 = less affectively polarised than control"
 )
 
 x_labs_bar <- c(
-  "< 0 = left wing change",
-  "< 0 = reduced belief that there is a consensus",
-  "< 0 = beliefs became more left wing relative to population",
-  "< 0 = became less trusting",
-  "< 0 = became less polarised"
+  "< 0 = beliefs more left wing than before",
+  "< 0 = less belief in consensus than before",
+  "< 0 = perceive beliefs more left wing than before",
+  "< 0 = less trusting than before",
+  "< 0 = less affective polarisation than before"
 )
 
 
@@ -207,7 +215,7 @@ p_list_change_vars <- plot_lm_and_bar(
 p_change_vars <- ggarrange(
   plotlist = p_list_change_vars,
   ncol = 1,
-  heights = c(6, 5, 5, 1.7, 1.7, 5)
+  heights = c(6, 5, 1.7, 1.7, 1.7, 5)
 )
 p_change_vars
 file = paste0("R/visualise/plots/combined-bar-lm-change-vars-Bayes-",Bayesian,".png")
@@ -264,6 +272,53 @@ file = paste0("R/visualise/plots/combined-bar-lm-aff-trust-Bayes-",Bayesian,".pn
 ggsave(filename = file, width = 30, height = 37, units = "cm", plot = p_aff_trust) # roughly a4 size
 
 ```
+
+### Full relative belief plots 
+
+```{r}
+#| fig.width: 13
+#| fig.height: 8
+variable_groups <- list(
+  change_relative
+)
+
+titles <- c(
+  "Perceived own beliefs relative to population, by topic"
+)
+
+x_labs_lm = c(
+  "< 0 = perceive beliefs more left wing than control"
+)
+
+x_labs_bar = c(
+  "< 0 = perceive beliefs more left wing than before"
+)
+
+p_list_aff_trust <- plot_lm_and_bar(
+  variable_groups,
+  x_labs_lm,
+  x_labs_bar,
+  titles,
+  d_lm,
+  d_bar,
+  change = TRUE,
+  ytext = TRUE,
+  ylim = c(-10, 10),
+  #xlim = c(-0.5,0.5),
+  by_topic = FALSE,
+  Bayesian = Bayesian,
+  run_models = run_models
+)
+p_aff_trust <- ggarrange(
+  plotlist = p_list_aff_trust,
+  ncol = 1,
+  heights = c(1,2)
+)
+p_aff_trust
+file = paste0("R/visualise/plots/combined-bar-lm-relative-Bayes-",Bayesian,".png")
+ggsave(filename = file, width = 30, height = 37, units = "cm", plot = p_aff_trust) # roughly a4 size
+```
+
 
 ## Initial values of measures
 
@@ -476,29 +531,30 @@ plotWeightsComparison = function(outcomes, title = NULL) {
         )))
       )
   }
-  
-  
-  
+
   plot <- combined_results %>%
     ggplot(aes(x = weight, y = variable, colour = predictor, shape = predictor)) +
-    geom_vline(xintercept = 1/5, linetype = "dashed", colour = "grey70") +
-    geom_point(size = 3, position = position_dodge(width = 0.5)) +
+    geom_vline(xintercept = 1/5, linetype = "dashed", colour = "grey30") +
+    geom_point(size = 4, position = position_dodge(width = 0.5)) +
     scale_x_continuous(labels = scales::percent, limits = c(0, 1)) +
-    scale_colour_brewer(palette = "Set2") +
+    #scale_colour_brewer(palette = "Set2") +
+    scale_colour_manual(values = c("#339933","#FF99CC","#99CCFF",
+                                   "#8888FF","#CC9900")) +
     facet_wrap(~ comparison) +
     labs(
-      x      = "Model Weight",
+      x = "Model Weight",
       y      = NULL,
       colour = "Predictor",
       shape  = "Predictor",
       title = title
     ) +
-    theme_minimal(base_size = 16) +
+    theme_minimal() +
     theme(
       panel.grid.minor = element_blank(),
-      strip.text       = element_text(face = "bold"),
+      strip.text       = element_text(face = "bold",size=13),
+      axis.title.x = element_text(face="plain",size=11),
       legend.position = "top",
-      title = element_text(face = "bold")
+      title = element_text(face = "bold",size=16)
     )
   
   if (length(unique(combined_results$variable)) == 1){
@@ -590,7 +646,7 @@ loadFixedEffects("change_consensus") %>%
 
 loadFixedEffects("change_consensus") %>% 
   filter(
-    grepl("friendly_nontroll", term),
+    grepl("friendly_all", term),
     !grepl("Before", term),
     variable %in% c("ConsensusAI", "ConsensusTrans", "ConsensusIsrael")
   )
@@ -627,7 +683,6 @@ loadFixedEffects("change_trust") %>%
     variable %in% c("TrustGovt")
   )
 ```
-
 
 ```{r}
 p_experience_seen <- plotWeightsComparison("after_only_questions")

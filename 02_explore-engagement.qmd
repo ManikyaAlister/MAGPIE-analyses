@@ -77,7 +77,7 @@ d_engagement_summ <- bind_rows(d_base_summ, fav_summ) %>%
 
 # set colour sale of status plots 
 status_colours <- c("Post"="darkgreen","Reply"="lightgreen","Reblog"="orange4",
-                     "Favourite"="orange", "Troll Post" = "yellow")
+                     "Favourite"="orange2", "Troll Post" = "yellow")
 ```
 ```{r}
 p_engage_total <- d_engagement_summ %>%
@@ -297,6 +297,7 @@ p_troll_engagement<- d_summ_political_post %>%
   labs(y = "Engagement Per Post", x = "Account Type", fill = "Engagement Type", title = str_wrap("C. Engagement per post by author in each condition",80)) + 
   facet_wrap(~Condition) +
   theme_bw()+
+  theme(strip.background = element_rect(colour = "black", fill = "white")) +
   theme(legend.position = "none")
 
 
