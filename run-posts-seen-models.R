@@ -63,7 +63,7 @@ d_seen_by_troll <- unique_posts_seen_by_user %>%
 
 d_survey_seen_by_troll <- d_before_after_change_scale01 %>%
   left_join(d_seen_by_troll, by = c(UserName = "username", "Condition")) %>%
-  filter(!is.na(prop_left_all) & Condition %in% c("Left", "Right")) # Remove control since people don't see troll posts
+  filter(!is.na(prop_left_all) & Condition %in% c("Left", "Right") & total_seen >= 50) # Remove control since people don't see troll posts
 # ---- Model setup ----
 
 predictor_names <- c(
@@ -72,7 +72,9 @@ predictor_names <- c(
   "pla"   = "prop_left_all",
   "prnt"  = "prop_right_nontroll",
   "plnt"  = "prop_left_nontroll",
-  "pf"    = "prop_friendly_all"
+  "pf"    = "prop_friendly_all",
+  "pfnt"    = "prop_friendly_nontroll"
+  
 )
 
 make_label = function(predictor_str) {
@@ -95,7 +97,7 @@ comparison_models_nontroll <- c(
   "prop_right_nontroll",
   "prop_left_nontroll",
   "prop_right_nontroll + prop_left_nontroll",
-  "prop_friendly_all"
+  "prop_friendly_nontroll"
 )
 
 combined_comparison_models <- unique(c(comparison_models_all, comparison_models_nontroll))
@@ -111,26 +113,37 @@ legend_all      <- make_legend(comparison_models_all)
 legend_nontroll <- make_legend(comparison_models_nontroll)
 
 # ---- DEFINE OUTCOMES HERE ----
-outcomes   <- "magpie_similarity"
-use_change <- T
+#outcomes   <- "magpie_similarity"
+outcomes   <-  c(after_only_questions, change_beliefs,change_consensus, change_trust)
+
 
 # ---- Run models ----
 
-runModelComparisons(
-  data              = d_survey_seen_by_troll,
-  variables         = get(outcomes),
-  comparison_models = combined_comparison_models,
-  predictor_names   = predictor_names,
-  change            = use_change,
-  run_models        = TRUE
-)
-
-# ---- Compute weights separately for each comparison ----
-
-results_all      <- computeModelWeights(get(outcomes), legend_all)
-results_nontroll <- computeModelWeights(get(outcomes), legend_nontroll)
-
-save(
-  results_all, results_nontroll,
-  file = here(paste0("R/analyse/lm-output/posts-seen/weights/", outcomes, ".rdata"))
-)
+for (outcome in outcomes) {
+  print(paste0("Outcome: ", outcome))
+  if (outcome %in% after_only_questions){
+    use_change <- F
+  } else {
+    use_change <- T
+  }
+  
+  runModelComparisons(
+    data              = d_survey_seen_by_troll,
+    variables         = outcome,
+    comparison_models = combined_comparison_models,
+    predictor_names   = predictor_names,
+    change            = use_change,
+    run_models        = TRUE,
+    skip_fitted = TRUE
+  )
+  
+  # ---- Compute weights separately for each comparison ----
+  
+  results_all      <- computeModelWeights(outcome, legend_all)
+  results_nontroll <- computeModelWeights(outcome, legend_nontroll)
+  
+  save(
+    results_all, results_nontroll,
+    file = here(paste0("R/analyse/lm-output/posts-seen/weights/", outcome, ".rdata"))
+  )
+}
