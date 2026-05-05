@@ -136,6 +136,7 @@ for (outcome in outcomes) {
     run_models        = TRUE,
     skip_fitted = TRUE
   )
+<<<<<<< HEAD
 
 }
 
@@ -165,3 +166,16 @@ for (outcome_group in outcome_groups){
   )
 }
 
+=======
+  
+  # ---- Compute weights separately for each comparison ----
+  
+  results_all      <- computeModelWeights(outcome, legend_all)
+  results_nontroll <- computeModelWeights(outcome, legend_nontroll)
+  
+  save(
+    results_all, results_nontroll,
+    file = here(paste0("R/analyse/lm-output/posts-seen/weights/", outcome, ".rdata"))
+  )
+}
+>>>>>>> 5a32df384e31f2211fc138fadec24084db0a2bd8
