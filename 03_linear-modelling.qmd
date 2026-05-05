@@ -502,7 +502,9 @@ plotWeightsComparison = function(outcomes, title = NULL) {
           predictors == "prop_right_nontroll"                      ~ "Right",
           predictors == "prop_left_nontroll"                       ~ "Left",
           predictors == "prop_right_nontroll + prop_left_nontroll" ~ "Left + Right",
-          predictors == "prop_friendly_all"                        ~ "Friendly"
+          predictors == "prop_friendly_all"                        ~ "Friendly",
+          predictors == "prop_friendly_nontroll"                        ~ "Friendly"
+
         ),
         predictor = factor(predictor, levels = c(
           "Condition", "Right", "Left", "Left + Right", "Friendly"
@@ -570,7 +572,7 @@ p_beliefs_seen <- plotWeightsComparison("change_beliefs", title = "A. Political 
 p_beliefs_seen[[1]]
 ```
 
-Below shows the coefficients of the models shown in the plot above, so that we can interpret the directions of the effects. 
+Below shows the coefficients of the models shown in the plot above, so that we can interpret the directions of the effects. As you'd expect, the coefficients are negative for left wing posts seen, and positive for right wing posts seen. This suggests that, when we include all of the content people saw, (left hand side of the plot above) seeing left wing posts was associated with left-wing shifts, and seeing right-wing posts was associated with right-wing shifts. These effects pretty much disappeared, however, when we remove troll-initiated content. 
 
 ```{r}
 loadFixedEffects = function(outcomes,
@@ -592,63 +594,71 @@ loadFixedEffects = function(outcomes,
         predictors == "prop_right_nontroll"                      ~ "Right",
         predictors == "prop_left_nontroll"                       ~ "Left",
         predictors == "prop_right_nontroll + prop_left_nontroll" ~ "Left + Right",
-        predictors == "prop_friendly_all"                        ~ "Friendly"
+        predictors == "prop_friendly_all"                        ~ "Friendly",
+        predictors == "prop_friendly_nontroll"                    ~ "Friendly"
       ),
       credible = sign(Q2.5) == sign(Q97.5)
     ) %>%
-    select(variable, term, Estimate, Q2.5, Q97.5) %>%
+    select(variable, term, Estimate, Q2.5, Q97.5, predictor) %>%
     arrange(variable, term)
 }
 
 # check strength direction of specific predictors 
 
-# right did well for most of the beliefs except AI
 loadFixedEffects("change_beliefs") %>% 
   filter(
     grepl("prop_right", term),
     !grepl("Before", term),
-    variable != "BeliefAI"
+      predictor != "Left + Right",
+    variable %in% c("BeliefTrans", "BeliefClimate", "BeliefOverall")
   )
 
-# left did well for AI
 loadFixedEffects("change_beliefs") %>% 
   filter(
     grepl("prop_left", term),
     !grepl("Before", term),
-    variable == "BeliefAI"
+    predictor != "Left + Right",
+    variable %in% c("BeliefAI", "BeliefIsrael", "BeliefOverall")
   )
 ```
+
+
 ```{r}
 p_consensus_seen <- plotWeightsComparison("change_consensus", title = "B. Perceptions of Consensus")
 p_consensus_seen[[1]]
 ```
+The plot above suggests the amount of left wing posts seen was a strong predictor of perceptions of consensus when considering all content. The coefficients below suggest that the direction was such that seeing more left wing posts was associated with greater perceptions of consensus. The relative performance of left wing posts as a predictor diminishes substantially when we remove troll initiated content for most predictors, however it still performs above that we would expect if all models were performing similarly (dashed line) and is still the best model for two variables (AI and overall) and performance similarly to condition for the other variables.
+
 ```{r}
-loadFixedEffects("change_consensus") %>% 
-  filter(
-    grepl("prop_right", term),
-    !grepl("Before", term),
-    variable %in% c("ConsensusClimate", "ConsensusIsrael", "ConsensusPolitics")
-  )
+# loadFixedEffects("change_consensus") %>% 
+#   filter(
+#     grepl("prop_right", term),
+#     !grepl("Before", term),
+#     variable %in% c("ConsensusClimate", "ConsensusIsrael", "ConsensusPolitics")
+#   )
 
 loadFixedEffects("change_consensus") %>% 
   filter(
     grepl("prop_left_all", term),
     !grepl("Before", term),
-    variable %in% c("ConsensusAI", "ConsensusTrans")
+        predictor != "Left + Right",
+    variable %in% c("ConsensusClimate", "ConsensusIsrael", "ConsensusPolitics", "ConsensusTrans")
   )
 
 loadFixedEffects("change_consensus") %>% 
   filter(
-    grepl("prop_right_nontroll", term),
+    grepl("prop_left_nontroll", term),
     !grepl("Before", term),
-    variable %in% c("ConsensusClimate", "ConsensusPolitics")
+        predictor != "Left + Right",
+    #variable %in% c("ConsensusClimate", "ConsensusIsrael", "ConsensusPolitics", "ConsensusTrans")
   )
+
 
 loadFixedEffects("change_consensus") %>% 
   filter(
     grepl("friendly_all", term),
     !grepl("Before", term),
-    variable %in% c("ConsensusAI", "ConsensusTrans", "ConsensusIsrael")
+    variable %in% c("ConsensusAI")
   )
 ```
 
@@ -657,6 +667,11 @@ loadFixedEffects("change_consensus") %>%
 p_trust_seen <-  plotWeightsComparison("change_trust")
 p_trust_seen[[1]]
 ```
+The amount of friendly posts seen was a very strong predictor of how much people trusted universities, with this strength persisting regardless of whether we considered troll-initiated content or not. It was also a decent predictor (though much weaker) of trust in media. According to the coefficients, this relationship was **negative**, such that seeing *more* friendly posts was associated with *less* trust in these institutions. I'm not sure what to make of this, especially for the very strong finding pertaining to universities. The only thing I can think of, since condition effects do not do very well here, is that there was some alternative discourse going on about universities, or if it is somehow related to their meta discourse about the study itself (since they knew they were participating in a university study.)
+
+Consistent with the original model condition effects, we see that seeing more right wing posts is a good predictor of *more* trust in media (only after removing troll content), governments, and business. This makes sense for trusting businesses, but seems counter intuitive for the media and the government. The fact that these predictors got stronger *after* removing troll initiated content suggests that it is something about the broader discourse, not our specific troll accounts -- which might makes it more plausible that although it may have been right-wing discourse, it could have been less conventional right wing discourse that was shifting peoples' trust. I'm not completely sure though. 
+
+
 
 ```{r}
 loadFixedEffects("change_trust") %>% 
@@ -664,23 +679,34 @@ loadFixedEffects("change_trust") %>%
     grepl("friendly", term),
     !grepl("Before", term),
     #,comparison == "Non-Troll Content",
-    variable %in% c("TrustMedia")
+    variable %in% c("TrustMedia", "TrustUnis")
   )
 
 loadFixedEffects("change_trust") %>% 
   filter(
-    grepl("prop_left", term),
+    grepl("prop_left_all", term),
     !grepl("Before", term),
+    predictor != "Left + Right",
     #,comparison == "Non-Troll Content",
-    variable %in% c("TrustPeople")
+    variable %in% c("TrustBusiness")
   )
 
 loadFixedEffects("change_trust") %>% 
   filter(
-    grepl("prop_right", term),
+    grepl("prop_right_all", term),
     !grepl("Before", term),
+      predictor != "Left + Right",
     #,comparison == "Non-Troll Content",
-    variable %in% c("TrustGovt")
+    variable %in% c("TrustGovt", "TrustBusiness", "TrustOverall")
+  )
+
+loadFixedEffects("change_trust") %>% 
+  filter(
+    grepl("prop_right_all", term),
+    !grepl("Before", term),
+      predictor != "Left + Right",
+    #,comparison == "Non-Troll Content",
+    variable %in% c("TrustGovt", "TrustBusiness", "TrustMedia")
   )
 ```
 
@@ -688,28 +714,45 @@ loadFixedEffects("change_trust") %>%
 p_experience_seen <- plotWeightsComparison("after_only_questions")
 p_experience_seen[[1]]
 ```
+The amount of right wing posts seen were generally the best predictors of the post survey experience questions. As shown below, seeing more right wing posts was associated with liking people less and feeling less aligned with other participants politically. Seeing more right wing posts was predicted thinking there was more troll posts, less so when removing troll initiated content (which makes sense). 
 
 ```{r}
 loadFixedEffects("after_only_questions") %>% 
   filter(
-    grepl("friendly", term),
-    !grepl("Before", term)
+    grepl("prop_right", term),
+    !grepl("Before", term),
+          predictor != "Left + Right",
     #,comparison == "Non-Troll Content",
-   # variable %in% c("TrustGovt")
+    !variable %in% c("MagpieSimilarity")
+  )
+
+loadFixedEffects("after_only_questions") %>% 
+  filter(
+    grepl("prop_left_all", term),
+    !grepl("Before", term),
+          predictor != "Left + Right",
+    #,comparison == "Non-Troll Content",
+    variable %in% c("PropAligned", "OverallExperience")
+  )
+
+loadFixedEffects("after_only_questions") %>% 
+  filter(
+    grepl("friendly", term),
+    !grepl("Before", term),
+    #,comparison == "Non-Troll Content",
+    variable %in% c("MagpieSimilarity")
   )
 ```
 
-Belief changes were best predicted by the troll condition, not by any broader norms of conversation that may have been induced by the trolls. 
-
 ```{r}
-p_beliefs_seen    <- p_beliefs_seen[[1]]
-p_consensus_seen  <- p_consensus_seen[[1]]
-p_trust_seen      <- plotWeightsComparison("trust_overall",      title = "C. Overall trust")[[1]]
-p_experience_seen <- plotWeightsComparison("overall_experience", title = "D. Overall experience")[[1]]
-p_liked_seen      <- plotWeightsComparison("prop_liked",         title = "E. Proportion of users liked")[[1]]
-p_trolls_seen     <- plotWeightsComparison("prop_trolls",        title = "F. Proportion perceived as trolls")[[1]]
-p_aligned_seen    <- plotWeightsComparison("prop_aligned",       title = "G. Perceived political alignment")[[1]]
-p_similarity_seen <- plotWeightsComparison("magpie_similarity",  title = "H. Similarity to real social media")[[1]]
+p_beliefs_seen    <- p_beliefs_seen
+p_consensus_seen  <- p_consensus_seen
+p_trust_seen      <- plotWeightsComparison("TrustOverall",      title = "C. Overall trust")[[1]]
+p_experience_seen <- plotWeightsComparison("OverallExperience", title = "D. Overall experience")[[1]]
+p_liked_seen      <- plotWeightsComparison("PropLiked",         title = "E. Proportion of users liked")[[1]]
+p_trolls_seen     <- plotWeightsComparison("PropTrolls",        title = "F. Proportion perceived as trolls")[[1]]
+p_aligned_seen    <- plotWeightsComparison("PropAligned",       title = "G. Perceived political alignment")[[1]]
+p_similarity_seen <- plotWeightsComparison("MagpieSimilarity",  title = "H. Similarity to real social media")[[1]]
 
 col_left <- (p_beliefs_seen / p_consensus_seen) +
   plot_layout(heights = c(1, 1))
