@@ -6,9 +6,9 @@ source(here("R/visualise/functions/plot-linear-relationships.R"))
 #d_activity_annotated <- read.csv(here("data/magpie/processed/combined/combined_statuses_with_participant_ids.csv"))
 d_activity_annotated <-  read.csv(
   here(
-    "data/mastodon/files/processed/combined/corrupted_all_activity_annotated.csv"
+    "data/magpie/processed/combined/combined_statuses_with_original_annotations.csv"
   )
-) # use data with corrupted IDs for now because at leat we know ratings are correct
+)
 
 
 # load change data

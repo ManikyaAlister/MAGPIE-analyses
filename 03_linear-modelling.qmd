@@ -486,8 +486,8 @@ To compare the relative importance of each predictor, we computed pseudo-Bayesia
 
 
 ```{r}
-plotWeightsComparison = function(outcomes, title = NULL) {
-  load(here(paste0("R/analyse/lm-output/posts-seen/weights/", outcomes, ".rdata")))
+plotWeightsComparison = function(outcomes, title = NULL, run_label = NULL) {
+  load(here(paste0("R/analyse/lm-output/posts-seen/weights/", outcomes, run_label,".rdata")))
   
   prep_weights = function(results, name) {
     results$weights %>%
@@ -576,9 +576,10 @@ Below shows the coefficients of the models shown in the plot above, so that we c
 
 ```{r}
 loadFixedEffects = function(outcomes,
-                            save_dir = "R/analyse/lm-output/posts-seen/") {
+                            save_dir = "R/analyse/lm-output/posts-seen/",
+                            run_label = NULL) {
   
-  load(here(paste0(save_dir, "weights/", outcomes, ".rdata")))
+  load(here(paste0(save_dir, "weights/", outcomes, run_label,".rdata")))
   
   bind_rows(
     results_all$fixef      %>% mutate(comparison = "All Content"),
@@ -745,14 +746,14 @@ loadFixedEffects("after_only_questions") %>%
 ```
 
 ```{r}
-p_beliefs_seen    <- p_beliefs_seen
-p_consensus_seen  <- p_consensus_seen
-p_trust_seen      <- plotWeightsComparison("TrustOverall",      title = "C. Overall trust")[[1]]
-p_experience_seen <- plotWeightsComparison("OverallExperience", title = "D. Overall experience")[[1]]
-p_liked_seen      <- plotWeightsComparison("PropLiked",         title = "E. Proportion of users liked")[[1]]
-p_trolls_seen     <- plotWeightsComparison("PropTrolls",        title = "F. Proportion perceived as trolls")[[1]]
-p_aligned_seen    <- plotWeightsComparison("PropAligned",       title = "G. Perceived political alignment")[[1]]
-p_similarity_seen <- plotWeightsComparison("MagpieSimilarity",  title = "H. Similarity to real social media")[[1]]
+p_beliefs_seen    <- p_beliefs_seen[[1]]
+p_consensus_seen  <- p_consensus_seen[[1]]
+p_trust_seen      <- plotWeightsComparison("trust_overall",      title = "C. Overall trust")[[1]]
+p_experience_seen <- plotWeightsComparison("overall_experience", title = "D. Overall experience")[[1]]
+p_liked_seen      <- plotWeightsComparison("prop_liked",         title = "E. Proportion of users liked")[[1]]
+p_trolls_seen     <- plotWeightsComparison("prop_trolls",        title = "F. Proportion perceived as trolls")[[1]]
+p_aligned_seen    <- plotWeightsComparison("prop_aligned",       title = "G. Perceived political alignment")[[1]]
+p_similarity_seen <- plotWeightsComparison("magpie_similarity",  title = "H. Similarity to real social media")[[1]]
 
 col_left <- (p_beliefs_seen / p_consensus_seen) +
   plot_layout(heights = c(1, 1))
@@ -770,3 +771,95 @@ ggsave(
   width    = 30, height = 35, units = "cm"
 )
 ```
+
+## Re-running with only full visibility
+
+```{r}
+
+# function that plots all of them at once so I don't need as much code 
+plotWeightsComparisonAll = function(outcome_groups, titles = NULL, run_label = NULL) {
+  
+  # titles can be a named vector (names = outcome group) or NULL
+  plots <- lapply(seq_along(outcome_groups), function(i) {
+    group <- outcome_groups[i]
+    title <- if (!is.null(titles)) titles[i] else NULL
+    plotWeightsComparison(group, title = title, run_label = run_label)
+  })
+  
+  # Return as named list so results can be accessed by outcome group name
+  # e.g. results[["change_beliefs"]]$plot or results[["change_beliefs"]]$data
+  results <- lapply(plots, function(p) list(plot = p[[1]], data = p[[2]]))
+  names(results) <- outcome_groups
+  results
+}
+```
+
+```{r}
+outcome_groups <- c(
+  "after_only_questions",
+  "change_beliefs",
+  "change_consensus",
+  "change_trust",
+  "prop_liked",
+  "prop_aligned",
+  "prop_trolls",
+  "overall_experience",
+  "magpie_similarity",
+  "trust_overall"
+)
+
+# optionally provide titles in the same order
+titles <- c(
+  "After-only questions",
+  "Political beliefs",
+  "Perceptions of consensus",
+  "Trust",
+  "Proportion liked",
+  "Perceived political alignment",
+  "Proportion perceived as trolls",
+  "Overall experience",
+  "Similarity to real social media",
+  "Trust overall"
+)
+
+all_plots <- plotWeightsComparisonAll(outcome_groups, titles = titles, run_label = "_visibility100")
+
+```
+
+```{r}
+p_beliefs_seen    <- all_plots[["change_beliefs"]]$plot
+p_consensus_seen  <- all_plots[["change_consensus"]]$plot
+p_trust_seen      <- all_plots[["trust_overall"]]$plot
+p_experience_seen <- all_plots[["overall_experience"]]$plot
+p_liked_seen      <- all_plots[["prop_liked"]]$plot
+p_trolls_seen     <- all_plots[["prop_trolls"]]$plot
+p_aligned_seen    <- all_plots[["prop_aligned"]]$plot
+p_similarity_seen <- all_plots[["magpie_similarity"]]$plot
+
+col_left <- (p_beliefs_seen / p_consensus_seen) +
+  plot_layout(heights = c(1, 1))
+col_right <- (p_trust_seen / p_experience_seen / p_liked_seen / p_trolls_seen / p_aligned_seen / p_similarity_seen) +
+  plot_layout(heights = c(1, 1, 1, 1, 1, 1))
+combined_seen_plot <- (col_left | col_right) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+
+ggsave(
+  plot     = combined_seen_plot,
+  filename = here("R/visualise/plots/combined-seen-plot-filter100.png"),
+  width    = 30, height = 35, units = "cm"
+)
+```
+
+```{r}
+all_plots[["change_consensus"]]$plot
+```
+```{r}
+all_plots[["trust_overall"]]$plot
+
+```
+```{r}
+all_plots[["after_only_questions"]]$plot
+
+```
+

@@ -80,7 +80,7 @@ d_joined <- d_corrupted_clean %>%
     )
   ) 
 
-# identify rows that have missing ideas
+# identify rows that have missing ids
 missing <- d_joined %>% filter(is.na(StatusID))
 
 # join those missing ids with less strict keys 
@@ -118,7 +118,7 @@ write.csv(d_joined_clean_reblogs, file = here("data/magpie/processed/combined/co
 
 # test 
 
-t = d_corrupted_clean %>%
+t = d_corrupted_clean %>% 
   group_by(Text, UserName, AccountReply, AccountReblog, Time, Condition) %>%
   filter(n() > 1)
 
@@ -134,8 +134,5 @@ no_rating <- d_corrupted_ann %>%
 no_rating_reblog <- no_rating %>%
   filter(! is.na(AccountReblog))
 
-# what are the ones that aren;t a reblog? 
-no_rating_reblog <- no_rating %>%
-  filter(is.na(AccountReblog)) # most of them don't have a topic so probably shouldn't be rated. Pretty much everything is accounted for, though apart from a few. 
 
 

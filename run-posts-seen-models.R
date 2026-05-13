@@ -3,14 +3,20 @@ library(tidyverse)
 library(brms)
 source(here("R/helper-functions/lm-functions.R"))
 
-# ---- Load data ----
+# define run label if running a different configuration to normal that is saved separately
+run_label <- "_visibility100" # make sure this is either "null" or matches with a label with posts_seen data
+
+# skip already fitted models? 
+skip_fitted <- FALSE
+
+#  Load data 
 
 load(here("data/magpie/original/combined/before.Rdata"))
 load(here("data/magpie/original/combined/after.Rdata"))
 load(here("data/magpie/processed/combined/survey-before-after-change.Rdata"))
-load(here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))
+load(here(paste0("data/magpie/processed/combined/posts-seen-by-user",run_label,".Rdata")))
 
-# ---- Variable groups ----
+#  Variable groups 
 
 after_questions         <- colnames(d_after)
 after_only_questions    <- c("PropLiked", "PropTrolls", "PropAligned", "MagpieSimilarity", "OverallExperience")
@@ -22,13 +28,13 @@ change_relative         <- after_questions[grepl("Relative", after_questions)]
 change_trust            <- after_questions[grepl("Trust", after_questions) & after_questions != "WVSTrust"]
 
 # for plot space/interpreatbility, some plots will be based on just one variable
-PropLiked  <- "PropLiked"
-PropTrolls <- "PropTrolls"
-PropAligned<- "PropAligned"
-MagpieSimilarity <- "MagpieSimilarity"
-OverallExperience <- "OverallExperience"
-TrustOverall <- "TrustOverall"
-# ---- Scale data ----
+prop_liked  <- "PropLiked"
+prop_trolls <- "PropTrolls"
+prop_aligned <- "PropAligned"
+magpie_similarity <- "MagpieSimilarity"
+overall_experience <- "OverallExperience"
+trust_overall <- "TrustOverall"
+#  Scale data 
 
 d_before_after_change_scale01 <- d_before_after_change %>%
   mutate(across(
@@ -36,7 +42,7 @@ d_before_after_change_scale01 <- d_before_after_change %>%
     scale_to_01
   ))
 
-# ---- Build exposure dataset ----
+#  Build exposure dataset 
 
 d_seen_by_troll <- unique_posts_seen_by_user %>%
   left_join(
@@ -64,7 +70,8 @@ d_seen_by_troll <- unique_posts_seen_by_user %>%
 d_survey_seen_by_troll <- d_before_after_change_scale01 %>%
   left_join(d_seen_by_troll, by = c(UserName = "username", "Condition")) %>%
   filter(!is.na(prop_left_all) & Condition %in% c("Left", "Right") & total_seen >= 50) # Remove control since people don't see troll posts
-# ---- Model setup ----
+
+#  Model setup 
 
 predictor_names <- c(
   "cond"  = "Condition",
@@ -77,18 +84,13 @@ predictor_names <- c(
   
 )
 
-make_label = function(predictor_str) {
-  terms <- trimws(strsplit(predictor_str, "\\+")[[1]])
-  paste(names(predictor_names)[match(terms, predictor_names)], collapse = "_")
-}
-
 # Step 1: does overall content exposure explain condition effects?
 comparison_models_all <- c(
   "Condition",
   "prop_right_all",
   "prop_left_all",
-  "prop_right_all + prop_left_all",
-  "prop_friendly_all"
+  "prop_friendly_all",
+  "prop_right_all + prop_left_all"
 )
 
 # Step 2: is this driven by norm shift rather than direct troll exposure?
@@ -96,15 +98,15 @@ comparison_models_nontroll <- c(
   "Condition",
   "prop_right_nontroll",
   "prop_left_nontroll",
-  "prop_right_nontroll + prop_left_nontroll",
-  "prop_friendly_nontroll"
+  "prop_friendly_nontroll",
+  "prop_right_nontroll + prop_left_nontroll"
 )
 
 combined_comparison_models <- unique(c(comparison_models_all, comparison_models_nontroll))
 
 make_legend = function(comparison_models) {
   data.frame(
-    label      = sapply(comparison_models, make_label),
+    label      = sapply(comparison_models, function(x) make_label(x,run_label)),
     predictors = comparison_models
   )
 }
@@ -112,35 +114,27 @@ make_legend = function(comparison_models) {
 legend_all      <- make_legend(comparison_models_all)
 legend_nontroll <- make_legend(comparison_models_nontroll)
 
-# ---- DEFINE OUTCOMES HERE ----
-#outcomes   <- "magpie_similarity"
+
+# DEFINE OUTCOMES HERE
 outcomes   <-  c(after_only_questions, change_beliefs,change_consensus, change_trust)
 
 
-# ---- Run models ----
-
-for (outcome in outcomes) {
-  print(paste0("Outcome: ", outcome))
-  if (outcome %in% after_only_questions){
-    use_change <- F
-  } else {
-    use_change <- T
-  }
+#  Run models 
   
-  runModelComparisons(
+use_change_vec <- ifelse(outcomes %in% after_only_questions, FALSE, TRUE)
+
+  runModelComparisons( 
     data              = d_survey_seen_by_troll,
-    variables         = outcome,
+    variables         = outcomes,
     comparison_models = combined_comparison_models,
     predictor_names   = predictor_names,
-    change            = use_change,
+    change            = use_change_vec,
     run_models        = TRUE,
-    skip_fitted = TRUE
+    skip_fitted = skip_fitted,
+    run_label = run_label
   )
-<<<<<<< HEAD
 
-}
-
-# ---- Compute weights separately for each comparison ----
+#  Compute weights separately for each comparison 
 
 outcome_groups <- c(
   "after_only_questions",
@@ -148,34 +142,23 @@ outcome_groups <- c(
   "change_consensus",
   "change_trust",
   # also need to do the after only questions and trust seprately for the manuscript plot
-  "TrustOverall",
-  "PropLiked",
-  "PropAligned",
-  "PropTrolls",
-  "OverallExperience",
-  "MagpieSimilarity"
+  "prop_liked",
+  "prop_aligned",
+  "prop_trolls",
+  "overall_experience",
+  "magpie_similarity",
+  "trust_overall"
 ) 
 
 for (outcome_group in outcome_groups){
   results_all      <- computeModelWeights(get(outcome_group), legend_all)
   results_nontroll <- computeModelWeights(get(outcome_group), legend_nontroll)
   
+  
   save(
     results_all, results_nontroll,
-    file = here(paste0("R/analyse/lm-output/posts-seen/weights/", outcome_group, ".rdata"))
+    file = here(paste0("R/analyse/lm-output/posts-seen/weights/", outcome_group,run_label,".rdata"))
   )
 }
 
-=======
-  
-  # ---- Compute weights separately for each comparison ----
-  
-  results_all      <- computeModelWeights(outcome, legend_all)
-  results_nontroll <- computeModelWeights(outcome, legend_nontroll)
-  
-  save(
-    results_all, results_nontroll,
-    file = here(paste0("R/analyse/lm-output/posts-seen/weights/", outcome, ".rdata"))
-  )
-}
->>>>>>> 5a32df384e31f2211fc138fadec24084db0a2bd8
+

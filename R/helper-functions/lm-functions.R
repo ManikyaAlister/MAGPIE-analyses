@@ -1,10 +1,9 @@
 # Transform (0, 100) to strictly (0, 1), avoiding exactly 0 and 1 (smithson transformation)
 scale_to_01 <- function(x, n = length(x)) {
   if (max(x) <= 10) {
-    # for 1-10 scales instead of 1-100 scales (hacky)
-    y <- x / 100  # First scale to [0, 1]
+    y <- x / 10  # 1-10 scale
   } else {
-    y <- x / 100
+    y <- x / 100  # 1-100 scale
   }
   (y * (n - 1) + 0.5) / n
 }
@@ -219,10 +218,6 @@ plotMultipleBarPlots = function(data,
       )
   }
   
-  
-  
-  
-  
   d_long_summ <- d_bar_plots_long %>%
     group_by(Condition, Variable) %>%
     summarise(mean = mean(value),
@@ -238,7 +233,7 @@ plotMultipleBarPlots = function(data,
     geom_jitter(
       data = d_bar_plots_long,
       aes(y = value, colour = Condition),
-      alpha = .15,
+      alpha = .5,
       size = 0.5
     ) +
     geom_errorbar(aes(ymin = mean - se, ymax = mean + se), width = .2) +
@@ -466,6 +461,13 @@ load_and_combine_data <- function(troll = "no_troll") {
   )
 }
 
+# function for labeling model runs based on predictors, outcomes, and a general run label if defined
+make_label = function(predictor_str, run_label) {
+  terms <- trimws(strsplit(predictor_str, "\\+")[[1]])
+  terms_label <- paste(names(predictor_names)[match(terms, predictor_names)], collapse = "_")
+  paste0(terms_label, run_label)
+}
+
 runModelComparisons = function(data,
                                variables,
                                comparison_models,
@@ -473,23 +475,23 @@ runModelComparisons = function(data,
                                change = FALSE,
                                run_models = TRUE,
                                skip_fitted = TRUE,
+                               run_label = NULL,
                                save_dir = "R/analyse/lm-output/posts-seen/"
 ) {
   
   models_dir <- file.path(save_dir, "models")
   if (!dir.exists(models_dir)) dir.create(models_dir, recursive = TRUE, showWarnings = FALSE)
+
   
-  make_label = function(predictor_str) {
-    terms <- trimws(strsplit(predictor_str, "\\+")[[1]])
-    paste(names(predictor_names)[match(terms, predictor_names)], collapse = "_")
-  }
-  
-  labels <- sapply(comparison_models, make_label)
+  labels <- sapply(comparison_models, function(x) make_label(x,run_label))
   legend <- data.frame(label = labels, predictors = comparison_models)
   
   for (j in seq_along(comparison_models)) {
     predictors <- comparison_models[j]
     label      <- labels[j]
+    
+    # Reset base_model once per predictor set — Stan compiles once here
+    # and update() reuses it across all outcomes with the same predictor structure
     base_model <- NULL
     
     print(paste0("Running models with predictors: ", predictors))
@@ -504,8 +506,12 @@ runModelComparisons = function(data,
       if (skip_fitted && file.exists(model_path)) {
         print(paste0("Skipping — loading saved loo"))
         e <- new.env()
-        load(model_path, envir = e)  # restores `loo_to_save`
-        # base_model stays NULL — update() won't work but we don't need it for skipped models
+        load(model_path, envir = e)
+        
+        # Reset so next outcome fits fresh rather than updating from
+        # a model not fitted in this session
+        base_model <- NULL
+        
       } else {
         if (change_i) {
           formula_str <- paste0(variable, "After ~ ", variable, "Before + ", predictors)
@@ -514,6 +520,7 @@ runModelComparisons = function(data,
         }
         
         if (is.null(base_model)) {
+          # First outcome for this predictor set — compile Stan program once
           base_model <- brm(
             data    = data,
             formula = as.formula(formula_str),
@@ -521,22 +528,28 @@ runModelComparisons = function(data,
             cores   = 2
           )
         } else {
-          base_model <- update(base_model, formula = as.formula(formula_str), newdata = data)
+          # Reuse compiled Stan program — only outcome variable changes,
+          # predictor structure is identical so no recompilation needed
+          base_model <- update(
+            base_model, 
+            formula   = as.formula(formula_str), 
+            newdata   = data,
+            recompile = FALSE  # prevents recompilation when only outcome name changes
+          )
         }
         
         base_model <- add_criterion(base_model, "loo")
-        loo_to_save    <- base_model$criteria$loo
-        fixef_to_save  <- fixef(base_model) %>% 
-          as.data.frame() %>% 
+        loo_to_save   <- base_model$criteria$loo
+        fixef_to_save <- fixef(base_model) %>%
+          as.data.frame() %>%
           rownames_to_column("term")
         save(loo_to_save, fixef_to_save, file = model_path)
       }
-      
-      # Free memory after each model is saved
-      rm(base_model)
-      base_model <- NULL
-      gc()
     }
+    
+    # Free memory after all outcomes for this predictor set are done
+    rm(base_model)
+    gc()
   }
 }
 
