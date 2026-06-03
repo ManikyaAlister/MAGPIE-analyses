@@ -562,6 +562,7 @@ computeModelWeights = function(variables,
   models_dir     <- file.path(save_dir, "models")
   weights_output <- NULL
   fixef_output   <- NULL
+  compare_output <- NULL  # new
   
   for (variable in variables) {
     loo_objects <- list()
@@ -578,7 +579,6 @@ computeModelWeights = function(variables,
       load(model_path, envir = e)
       loo_objects[[legend$predictors[j]]] <- e$loo_to_save
       
-      # extract fixed effects if available
       if (exists("fixef_to_save", envir = e)) {
         fixef_output <- bind_rows(fixef_output,
                                   e$fixef_to_save %>% mutate(predictors = legend$predictors[j], variable = variable)
@@ -586,18 +586,47 @@ computeModelWeights = function(variables,
       }
     }
     
-    weights_i <- loo_model_weights(unname(loo_objects), method = "pseudobma") %>%
-      as.numeric() %>%
-      data.frame(weight = .) %>%
+    # Bootstrap weights
+    pointwise_elpd <- sapply(loo_objects, function(x) x$pointwise[, "elpd_loo"])
+    
+    n_boot <- 1000
+    n_obs  <- nrow(pointwise_elpd)
+    boot_weights <- matrix(NA, nrow = n_boot, ncol = length(loo_objects))
+    
+    for (b in 1:n_boot) {
+      idx <- sample(n_obs, replace = TRUE)
+      boot_elpd <- colSums(pointwise_elpd[idx, ])
+      boot_weights[b, ] <- exp(boot_elpd) / sum(exp(boot_elpd))
+    }
+    
+    weights_i <- data.frame(
+      weight    = colMeans(boot_weights),
+      weight_se = apply(boot_weights, 2, sd)
+    ) %>%
       mutate(
-        predictors = names(loo_objects),
-        weight     = weight / sum(weight)
+        weight     = weight / sum(weight),
+        weight_lo  = pmax(weight - 1.96 * weight_se, 0),
+        weight_hi  = pmin(weight + 1.96 * weight_se, 1),
+        predictors = names(loo_objects)
       ) %>%
       left_join(legend, by = "predictors") %>%
       mutate(variable = variable)
     
     weights_output <- bind_rows(weights_output, weights_i)
+    
+    # loo_compare: compare all models, add variable label, store
+    # returns ELPD differences relative to best model with SE
+    compare_i <- loo_compare(loo_objects) %>%
+      as.data.frame() %>%
+      rownames_to_column("predictors") %>%
+      mutate(variable = variable)
+    
+    compare_output <- bind_rows(compare_output, compare_i)
   }
   
-  list(weights = weights_output, fixef = fixef_output)
+  list(
+    weights = weights_output,
+    fixef   = fixef_output,
+    compare = compare_output   # NULL for old results objects, so backwards compatible
+  )
 }

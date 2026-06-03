@@ -487,7 +487,7 @@ To compare the relative importance of each predictor, we computed pseudo-Bayesia
 
 ```{r}
 plotWeightsComparison = function(outcomes, title = NULL, run_label = NULL) {
-  load(here(paste0("R/analyse/lm-output/posts-seen/weights/", outcomes, run_label,".rdata")))
+  load(here(paste0("R/analyse/lm-output/posts-seen/weights/", outcomes, run_label, ".rdata")))
   
   prep_weights = function(results, name) {
     results$weights %>%
@@ -503,8 +503,7 @@ plotWeightsComparison = function(outcomes, title = NULL, run_label = NULL) {
           predictors == "prop_left_nontroll"                       ~ "Left",
           predictors == "prop_right_nontroll + prop_left_nontroll" ~ "Left + Right",
           predictors == "prop_friendly_all"                        ~ "Friendly",
-          predictors == "prop_friendly_nontroll"                        ~ "Friendly"
-
+          predictors == "prop_friendly_nontroll"                   ~ "Friendly"
         ),
         predictor = factor(predictor, levels = c(
           "Condition", "Right", "Left", "Left + Right", "Friendly"
@@ -512,65 +511,159 @@ plotWeightsComparison = function(outcomes, title = NULL, run_label = NULL) {
       )
   }
   
-  combined_results <- bind_rows(
+  prep_compare = function(results, name) {
+    results$compare %>%
+      mutate(
+        comparison   = name,
+        # compute error bar bounds here so columns are guaranteed to exist after bind_rows
+        elpd_diff_lo = elpd_diff - 1.96 * se_diff,
+        elpd_diff_hi = elpd_diff + 1.96 * se_diff,
+        predictor  = case_when(
+          predictors == "Condition"                                ~ "Condition",
+          predictors == "prop_right_all"                           ~ "Right",
+          predictors == "prop_left_all"                            ~ "Left",
+          predictors == "prop_right_all + prop_left_all"           ~ "Left + Right",
+          predictors == "prop_right_nontroll"                      ~ "Right",
+          predictors == "prop_left_nontroll"                       ~ "Left",
+          predictors == "prop_right_nontroll + prop_left_nontroll" ~ "Left + Right",
+          predictors == "prop_friendly_all"                        ~ "Friendly",
+          predictors == "prop_friendly_nontroll"                   ~ "Friendly"
+        ),
+        predictor = factor(predictor, levels = c(
+          "Condition", "Right", "Left", "Left + Right", "Friendly"
+        ))
+      )
+  }
+  
+  # Helper to apply keyword stripping so that variable order aligns with coefficient plots
+  strip_keywords = function(df) {
+    keywords <- c("AI", "Trans", "Climate", "Israel")
+    if (any(str_extract(df$variable, paste(keywords, collapse = "|")) %in% keywords)) {
+      df <- df %>%
+        mutate(
+          variable = str_extract(variable, paste(keywords, collapse = "|")),
+          variable = if_else(is.na(variable), "Overall", variable),
+          variable = factor(variable, levels = rev(c(keywords, "Overall")))
+        )
+    }
+    df
+  }
+  
+  # Helper to build a plot given prepped data and plot-type-specific parameters
+  make_plot = function(combined_results, x_var, xmin_var, xmax_var, x_label, vline, x_scale) {
+    p <- combined_results %>%
+      ggplot(aes(x = .data[[x_var]], y = variable, colour = predictor, shape = predictor)) +
+      geom_vline(xintercept = vline, linetype = "dashed", colour = "grey30") +
+      geom_errorbarh(
+        aes(xmin = .data[[xmin_var]], xmax = .data[[xmax_var]]),
+        height   = 0.2,
+        position = position_dodge(width = 0.5)
+      ) +
+      geom_point(size = 4, position = position_dodge(width = 0.5)) +
+      x_scale +
+      scale_colour_manual(values = c("#339933", "#FF99CC", "#99CCFF", "#8888FF", "#CC9900")) +
+      facet_wrap(~ comparison) +
+      labs(
+        x      = x_label,
+        y      = NULL,
+        colour = "Predictor",
+        shape  = "Predictor",
+        title  = title
+      ) +
+      theme_minimal() +
+      theme(
+        panel.grid.minor = element_blank(),
+        strip.text       = element_text(face = "bold", size = 13),
+        axis.title.x     = element_text(face = "plain", size = 11),
+        legend.position  = "top",
+        title            = element_text(face = "bold", size = 16)
+      )
+    
+    if (length(unique(combined_results$variable)) == 1) {
+      p <- p + theme(axis.text.y = element_blank())
+    }
+    p
+  }
+  
+  # ---- Weights plot ----
+  weights_results <- bind_rows(
     prep_weights(results_all,      "All Content"),
     prep_weights(results_nontroll, "Non-Troll Initiated Content")
   ) %>%
-      mutate(comparison = factor(comparison, levels = c("All Content", "Non-Troll Initiated Content")))
+    mutate(comparison = factor(comparison, levels = c("All Content", "Non-Troll Initiated Content"))) %>%
+    strip_keywords()
   
+  plot_weights <- make_plot(
+    weights_results,
+    x_var    = "weight",
+    xmin_var = "weight_lo",
+    xmax_var = "weight_hi",
+    x_label  = "Model Weight",
+    vline    = 1/5,   # chance line for 5 models
+    x_scale  = scale_x_continuous(labels = scales::percent, limits = c(0, 1))
+  )
   
-   # Strip the variable names to their core topic so that the order can be aligned with the coeffient plots
-  keywords <- c("AI", "Trans", "Climate", "Israel")
+  # ---- Compare plot ----
+  # Only build if compare data exists (backwards compatible with old results objects)
+  plot_compare <- NULL
+  compare_results <- NULL
   
-  # check if this is a variable that needs to be broken down by topic (keyword)
-  if (any(str_extract(combined_results$variable, paste(keywords, collapse = "|")) %in% keywords)) {
-    combined_results <- combined_results %>%
-      mutate(
-        variable = str_extract(variable, paste(keywords, collapse = "|")),
-        variable = if_else(is.na(variable), "Overall", variable),
-        variable = factor(variable, levels = rev(c(
-          keywords, "Overall"
-        )))
-      )
-  }
-
-  plot <- combined_results %>%
-    ggplot(aes(x = weight, y = variable, colour = predictor, shape = predictor)) +
-    geom_vline(xintercept = 1/5, linetype = "dashed", colour = "grey30") +
-    geom_point(size = 4, position = position_dodge(width = 0.5)) +
-    scale_x_continuous(labels = scales::percent, limits = c(0, 1)) +
-    #scale_colour_brewer(palette = "Set2") +
-    scale_colour_manual(values = c("#339933","#FF99CC","#99CCFF",
-                                   "#8888FF","#CC9900")) +
-    facet_wrap(~ comparison) +
-    labs(
-      x = "Model Weight",
-      y      = NULL,
-      colour = "Predictor",
-      shape  = "Predictor",
-      title = title
-    ) +
-    theme_minimal() +
-    theme(
-      panel.grid.minor = element_blank(),
-      strip.text       = element_text(face = "bold",size=13),
-      axis.title.x = element_text(face="plain",size=11),
-      legend.position = "top",
-      title = element_text(face = "bold",size=16)
+  if (!is.null(results_all$compare) && !is.null(results_nontroll$compare)) {
+    compare_results <- bind_rows(
+      prep_compare(results_all,      "All Content"),
+      prep_compare(results_nontroll, "Non-Troll Initiated Content")
+    ) %>%
+      mutate(comparison = factor(comparison, levels = c("All Content", "Non-Troll Initiated Content"))) %>%
+      strip_keywords()
+    
+    plot_compare <- make_plot(
+      compare_results,
+      x_var    = "elpd_diff",
+      xmin_var = "elpd_diff_lo",
+      xmax_var = "elpd_diff_hi",
+      x_label  = "ELPD Difference (relative to best model)",
+      vline    = 0,    # best model is always at 0 in loo_compare
+      x_scale  = scale_x_continuous()
     )
-  
-  if (length(unique(combined_results$variable)) == 1){
-    plot <- plot +
-      theme(axis.text.y = element_blank())
   }
   
-  list(plot, 
-       combined_results)
+  list(
+    plot_weights         = plot_weights,
+    plot_compare = plot_compare,
+    data_weights         = weights_results,
+    data_compare = compare_results
+  )
+}
+
+
+# function that plots all of the variables at once so I don't need as much code 
+plotWeightsComparisonAll = function(outcome_groups,
+                                    titles = NULL,
+                                    run_label = NULL,
+                                    plot_type = "weights") # weights or compare
+  {
+  # titles can be a named vector (names = outcome group) or NULL
+  plots <- lapply(seq_along(outcome_groups), function(i) {
+    group <- outcome_groups[i]
+    title <- if (!is.null(titles))
+      titles[i]
+    else
+      NULL
+    plotWeightsComparison(group, title = title, run_label = run_label)
+  })
+  
+  # Return as named list so results can be accessed by outcome group name
+  # e.g. results[["change_beliefs"]]$plot or results[["change_beliefs"]]$data
+  results <- lapply(plots, function(p)
+    list(plot = p[[paste0("plot_",plot_type)]], data = p[[paste0(plot_type,"_results")]]))
+  names(results) <- outcome_groups
+  results
 }
 
 p_beliefs_seen <- plotWeightsComparison("change_beliefs", title = "A. Political Beliefs")
-p_beliefs_seen[[1]]
+p_beliefs_seen[["plot_compare"]]
 ```
+
 
 Below shows the coefficients of the models shown in the plot above, so that we can interpret the directions of the effects. As you'd expect, the coefficients are negative for left wing posts seen, and positive for right wing posts seen. This suggests that, when we include all of the content people saw, (left hand side of the plot above) seeing left wing posts was associated with left-wing shifts, and seeing right-wing posts was associated with right-wing shifts. These effects pretty much disappeared, however, when we remove troll-initiated content. 
 
@@ -746,120 +839,208 @@ loadFixedEffects("after_only_questions") %>%
 ```
 
 ```{r}
-p_beliefs_seen    <- p_beliefs_seen[[1]]
-p_consensus_seen  <- p_consensus_seen[[1]]
-p_trust_seen      <- plotWeightsComparison("trust_overall",      title = "C. Overall trust")[[1]]
-p_experience_seen <- plotWeightsComparison("overall_experience", title = "D. Overall experience")[[1]]
-p_liked_seen      <- plotWeightsComparison("prop_liked",         title = "E. Proportion of users liked")[[1]]
-p_trolls_seen     <- plotWeightsComparison("prop_trolls",        title = "F. Proportion perceived as trolls")[[1]]
-p_aligned_seen    <- plotWeightsComparison("prop_aligned",       title = "G. Perceived political alignment")[[1]]
-p_similarity_seen <- plotWeightsComparison("magpie_similarity",  title = "H. Similarity to real social media")[[1]]
+makeCombinedSeenPlot = function(run_label = NULL,
+                                plot_type = "weights",
+                                filename  = "combined-seen-plot",
+                                width     = 30,
+                                height    = 35) {
+  
+  outcome_groups <- c(
+    "change_beliefs",
+    "change_consensus",
+    "trust_overall",
+    "overall_experience",
+    "prop_liked",
+    "prop_trolls",
+    "prop_aligned",
+    "magpie_similarity"
+  )
+  
+  titles <- c(
+    "A. Political Beliefs",
+    "B. Perceptions of Consensus",
+    "C. Overall trust",
+    "D. Overall experience",
+    "E. Proportion of users liked",
+    "F. Proportion perceived as trolls",
+    "G. Perceived political alignment",
+    "H. Similarity to real social media"
+  )
+  
+  all_plots <- plotWeightsComparisonAll(
+    outcome_groups = outcome_groups,
+    titles         = titles,
+    run_label      = run_label,
+    plot_type      = plot_type
+  )
+  
+  p_beliefs_seen    <- all_plots[["change_beliefs"]]$plot
+  p_consensus_seen  <- all_plots[["change_consensus"]]$plot
+  p_trust_seen      <- all_plots[["trust_overall"]]$plot
+  p_experience_seen <- all_plots[["overall_experience"]]$plot
+  p_liked_seen      <- all_plots[["prop_liked"]]$plot
+  p_trolls_seen     <- all_plots[["prop_trolls"]]$plot
+  p_aligned_seen    <- all_plots[["prop_aligned"]]$plot
+  p_similarity_seen <- all_plots[["magpie_similarity"]]$plot
+  
+  col_left <- (p_beliefs_seen / p_consensus_seen) +
+    plot_layout(heights = c(1, 1))
+  col_right <- (p_trust_seen / p_experience_seen / p_liked_seen / p_trolls_seen / p_aligned_seen / p_similarity_seen) +
+    plot_layout(heights = c(1, 1, 1, 1, 1, 1))
+  combined_seen_plot <- (col_left | col_right) +
+    plot_layout(guides = "collect") &
+    theme(legend.position = "bottom")
+  
+  ggsave(
+    plot     = combined_seen_plot,
+    filename = here(paste0("R/visualise/plots/", filename, run_label, "-", plot_type, ".png")),
+    width    = width,
+    height   = height,
+    units    = "cm"
+  )
+  
+  invisible(combined_seen_plot)
+}
 
-col_left <- (p_beliefs_seen / p_consensus_seen) +
-  plot_layout(heights = c(1, 1))
-
-col_right <- (p_trust_seen / p_experience_seen / p_liked_seen / p_trolls_seen / p_aligned_seen / p_similarity_seen) +
-  plot_layout(heights = c(1, 1, 1, 1, 1, 1))
-
-combined_seen_plot <- (col_left | col_right) +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "bottom")
-
-ggsave(
-  plot     = combined_seen_plot,
-  filename = here("R/visualise/plots/combined-seen-plot.png"),
-  width    = 30, height = 35, units = "cm"
-)
 ```
+
+```{r}
+# default weights plot
+makeCombinedSeenPlot(run_label = NULL)
+
+# loo_compare version
+makeCombinedSeenPlot(run_label = NULL, plot_type = "compare")
+```
+
 
 ## Re-running with only full visibility
 
 ```{r}
+# default weights plot
+makeCombinedSeenPlot(run_label = "_visibility100")
 
-# function that plots all of them at once so I don't need as much code 
-plotWeightsComparisonAll = function(outcome_groups, titles = NULL, run_label = NULL) {
-  
-  # titles can be a named vector (names = outcome group) or NULL
-  plots <- lapply(seq_along(outcome_groups), function(i) {
-    group <- outcome_groups[i]
-    title <- if (!is.null(titles)) titles[i] else NULL
-    plotWeightsComparison(group, title = title, run_label = run_label)
+# loo_compare version
+makeCombinedSeenPlot(run_label = "_visibility100", plot_type = "compare")
+```
+
+# Re-run with only >= 50% visibility (original criteria)
+
+```{r}
+# default weights plot
+makeCombinedSeenPlot(run_label = "_visibility50")
+
+# loo_compare version
+makeCombinedSeenPlot(run_label = "_visibility50", plot_type = "compare")
+```
+
+```{r}
+plotCoefficientsGrid = function(run_label = NULL, title = NULL) {
+
+  outcome_groups <- c("change_beliefs", "change_consensus", "change_trust", "after_only_questions")
+
+  group_to_category <- c(
+    change_beliefs       = "Belief Change",
+    change_consensus     = "Consensus Change",
+    change_trust         = "Trust Change",
+    after_only_questions = "After Only"
+  )
+
+  # Load and combine fixef from all outcome groups
+  all_fixef <- map_dfr(outcome_groups, function(group) {
+    load(here(paste0("R/analyse/lm-output/posts-seen/weights/", group, run_label, ".rdata")))
+
+    bind_rows(
+      results_all$fixef      %>% mutate(comparison = "All Content"),
+      results_nontroll$fixef %>% mutate(comparison = "Non-Troll Content")
+    ) %>%
+      mutate(outcome_group = group,
+             category      = group_to_category[group])
   })
-  
-  # Return as named list so results can be accessed by outcome group name
-  # e.g. results[["change_beliefs"]]$plot or results[["change_beliefs"]]$data
-  results <- lapply(plots, function(p) list(plot = p[[1]], data = p[[2]]))
-  names(results) <- outcome_groups
-  results
+
+  # Strip topic keywords per outcome group (mirrors strip_keywords logic)
+  keywords <- c("AI", "Trans", "Climate", "Israel")
+
+  d_plot <- all_fixef %>%
+    # Drop intercept, before-covariate, condition effects, and joint Left+Right model
+    filter(
+      term != "Intercept",
+      !grepl("Before$",    term),
+      !grepl("^Condition", term),
+      !predictors %in% c("Condition",
+                         "prop_right_all + prop_left_all",
+                         "prop_right_nontroll + prop_left_nontroll")
+    ) %>%
+    mutate(
+      credible  = sign(Q2.5) == sign(Q97.5),
+      predictor = case_when(
+        predictors == "prop_right_all"      ~ "Prop. Right Seen",
+        predictors == "prop_left_all"       ~ "Prop. Left Seen",
+        predictors == "prop_friendly_all"   ~ "Prop. Friendly Seen",
+        predictors == "prop_right_nontroll" ~ "Prop. Right Seen",
+        predictors == "prop_left_nontroll"  ~ "Prop. Left Seen",
+        predictors == "prop_friendly_nontroll" ~ "Prop. Friendly Seen"
+      ),
+      predictor  = factor(predictor,  levels = c("Prop. Right Seen", "Prop. Left Seen", "Prop. Friendly Seen")),
+      comparison = factor(comparison, levels = c("All Content", "Non-Troll Content")),
+      category   = factor(category,   levels = c("Belief Change", "Consensus Change",
+                                                  "Trust Change", "After Only"))
+    ) %>%
+    # Apply keyword stripping per outcome group
+    group_by(outcome_group) %>%
+group_modify(function(df, key) {
+  if (key$outcome_group == "change_trust") {
+    df %>% mutate(
+      variable = str_remove(variable, "^Trust"),
+      variable = factor(variable, levels = c("Overall", "Media", "Unis", "Govt", "Business", "People"))
+    )
+  } else {
+    extracted <- str_extract(df$variable, paste(keywords, collapse = "|"))
+    if (any(extracted %in% keywords, na.rm = TRUE)) {
+      df %>% mutate(
+        variable = if_else(is.na(extracted), "Overall", extracted),
+        variable = factor(variable, levels = rev(c(keywords, "Overall")))
+      )
+    } else {
+      df %>% mutate(variable = factor(variable))
+    }
+  }
+}) %>%
+ungroup()
+
+  ggplot(d_plot, aes(x = variable, y = Estimate,
+                     colour = comparison, shape = comparison,
+                     alpha  = credible)) +
+    geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
+    geom_pointrange(
+      aes(ymin = Q2.5, ymax = Q97.5),
+      position = position_dodge(width = 0.5),
+      size     = 0.4
+    ) +
+    facet_grid(predictor ~ category, scales = "free_x", space = "free_x") +
+    scale_alpha_manual(values  = c(`TRUE` = 1, `FALSE` = 0.3), guide = "none") +
+    scale_colour_manual(values = c("All Content"       = "#E15759",
+                                   "Non-Troll Content" = "#4E79A7")) +
+    scale_shape_manual(values  = c("All Content"       = 16,
+                                   "Non-Troll Content" = 17)) +
+    theme_minimal(base_size = 9) +
+    theme(
+      axis.text.x      = element_text(angle = 45, hjust = 1, size = 7),
+      strip.text.x     = element_text(size = 8, face = "bold"),
+      strip.text.y     = element_text(size = 8, face = "bold"),
+      legend.position  = "bottom",
+      panel.spacing    = unit(0.8, "lines"),
+      panel.grid.minor = element_blank()
+    ) +
+    labs(x = NULL, y = "Coefficient (95% CI)",
+         colour = NULL, shape = NULL, title = title, subtitle = "Transparent coefficients overlap with 0")
 }
-```
 
-```{r}
-outcome_groups <- c(
-  "after_only_questions",
-  "change_beliefs",
-  "change_consensus",
-  "change_trust",
-  "prop_liked",
-  "prop_aligned",
-  "prop_trolls",
-  "overall_experience",
-  "magpie_similarity",
-  "trust_overall"
-)
+# Usage
+p_coef_grid <- plotCoefficientsGrid(run_label = "_visibility50", title = "Model coefficient estimates: All vs Non-Troll Content")
+ggsave(plot = p_coef_grid,
+       filename = here("R/visualise/plots/coefficients-grid.png"),
+       width = 14, height = 7, units = "cm", scale = 2)
 
-# optionally provide titles in the same order
-titles <- c(
-  "After-only questions",
-  "Political beliefs",
-  "Perceptions of consensus",
-  "Trust",
-  "Proportion liked",
-  "Perceived political alignment",
-  "Proportion perceived as trolls",
-  "Overall experience",
-  "Similarity to real social media",
-  "Trust overall"
-)
-
-all_plots <- plotWeightsComparisonAll(outcome_groups, titles = titles, run_label = "_visibility100")
-
-```
-
-```{r}
-p_beliefs_seen    <- all_plots[["change_beliefs"]]$plot
-p_consensus_seen  <- all_plots[["change_consensus"]]$plot
-p_trust_seen      <- all_plots[["trust_overall"]]$plot
-p_experience_seen <- all_plots[["overall_experience"]]$plot
-p_liked_seen      <- all_plots[["prop_liked"]]$plot
-p_trolls_seen     <- all_plots[["prop_trolls"]]$plot
-p_aligned_seen    <- all_plots[["prop_aligned"]]$plot
-p_similarity_seen <- all_plots[["magpie_similarity"]]$plot
-
-col_left <- (p_beliefs_seen / p_consensus_seen) +
-  plot_layout(heights = c(1, 1))
-col_right <- (p_trust_seen / p_experience_seen / p_liked_seen / p_trolls_seen / p_aligned_seen / p_similarity_seen) +
-  plot_layout(heights = c(1, 1, 1, 1, 1, 1))
-combined_seen_plot <- (col_left | col_right) +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "bottom")
-
-ggsave(
-  plot     = combined_seen_plot,
-  filename = here("R/visualise/plots/combined-seen-plot-filter100.png"),
-  width    = 30, height = 35, units = "cm"
-)
-```
-
-```{r}
-all_plots[["change_consensus"]]$plot
-```
-```{r}
-all_plots[["trust_overall"]]$plot
-
-```
-```{r}
-all_plots[["after_only_questions"]]$plot
-
+p_coef_grid
 ```
 

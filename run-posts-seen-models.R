@@ -7,7 +7,7 @@ source(here("R/helper-functions/lm-functions.R"))
 run_label <- "_visibility100" # make sure this is either "null" or matches with a label with posts_seen data
 
 # skip already fitted models? 
-skip_fitted <- FALSE
+skip_fitted <- TRUE
 
 #  Load data 
 

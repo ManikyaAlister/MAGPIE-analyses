@@ -101,3 +101,6 @@ loadAndCombineVisibility()
 
 # run with only 100% visibility 
 loadAndCombineVisibility(label = "_visibility100", visibility_threshold = 100)
+
+loadAndCombineVisibility(label = "_visibility50", visibility_threshold = 50)
+
