@@ -1,100 +1,26 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Exploratory correlation figures for the "posts seen" analysis.
+#
+# The correlation computation itself (cor_all, cor_nontroll, tidy_cor, outcome
+# groups, joined data) now lives in R/analyse/posts-seen-correlations-prep.R so
+# it can be shared with 04_supplementary-materials.qmd. This script just sources
+# that prep and draws the standalone exploratory heatmap / dot-plot figures.
+#
+# The manuscript supplementary correlation grids (Figure 5 equivalents) are
+# produced in 04_supplementary-materials.qmd, not here.
+# ─────────────────────────────────────────────────────────────────────────────
+
 library(here)
 library(tidyverse)
-library(correlation)
 library(ggpubr)
-source(here("R/helper-functions/lm-functions.R"))
 
-# define run label if running a different configuration to normal that is saved separately
-run_label <- "_visibility50" # make sure this is either "null" or matches with a label with posts_seen data
+# run_label can be set before sourcing the prep to switch configurations
+run_label <- "_visibility50"
 
-# skip already fitted models? 
-skip_fitted <- TRUE
+# Computes cor_all, cor_nontroll, tidy_cor, change_* groups, d_survey_seen_by_troll
+source(here("R/analyse/posts-seen-correlations-prep.R"))
 
-load(here("data/magpie/original/combined/before.Rdata"))
-load(here("data/magpie/original/combined/after.Rdata"))
-load(here("data/magpie/processed/combined/survey-before-after-change.Rdata"))
-load(here(paste0("data/magpie/processed/combined/posts-seen-by-user",run_label,".Rdata")))
-
-# create variable groupings 
-after_questions         <- colnames(d_after)
-after_only_questions    <- c("PropLiked", "PropTrolls", "PropAligned", "MagpieSimilarity", "OverallExperience")
-change_beliefs          <- paste0(after_questions[grepl("Belief", after_questions) & !grepl("Extreme", after_questions)], "Change")
-change_consensus        <- paste0(after_questions[grepl("Consensus", after_questions)], "Change")
-change_trust            <- paste0(after_questions[grepl("Trust", after_questions) & after_questions != "WVSTrust"],"Change")
-
-# for plot space/interpreatbility, some plots will be based on just one variable
-prop_liked  <- "PropLiked"
-prop_trolls <- "PropTrolls"
-prop_aligned <- "PropAligned"
-magpie_similarity <- "MagpieSimilarity"
-overall_experience <- "OverallExperience"
-trust_overall <- "TrustOverall"
-
-# combine post seen data sets for whether they included troll initiated content or not
-d_seen_by_troll <- unique_posts_seen_by_user %>%
-  left_join(
-    unique_posts_seen_by_user_troll %>%
-      select(username, Condition, prop_right, prop_left, prop_friendly, meta_seen) %>%
-      rename(prop_right_troll = prop_right, prop_left_troll = prop_left,
-             prop_friendly_troll = prop_friendly, meta_seen_troll = meta_seen),
-    by = c("username", "Condition")
-  ) %>%
-  left_join(
-    unique_posts_seen_by_user_nontroll %>%
-      select(username, Condition, prop_right, prop_left, prop_friendly, meta_seen) %>%
-      rename(prop_right_nontroll = prop_right, prop_left_nontroll = prop_left,
-             prop_friendly_nontroll = prop_friendly, meta_seen_nontroll = meta_seen),
-    by = c("username", "Condition")
-  ) %>%
-  rename(prop_right_all = prop_right, prop_left_all = prop_left,
-         prop_friendly_all = prop_friendly, meta_seen_all = meta_seen) %>%
-  mutate(across(
-    c(prop_right_troll, prop_left_troll, prop_friendly_troll, meta_seen_troll,
-      prop_right_nontroll, prop_left_nontroll, prop_friendly_nontroll, meta_seen_nontroll),
-    ~ replace_na(., 0)
-  ))
-
-# standardize scale measures data 
-d_before_after_change_scale01 <- d_before_after_change %>%
-  mutate(across(
-    where(is.numeric) & (ends_with("Before") | ends_with("After") | any_of(after_only_questions)),
-    scale_to_01
-  ))
-
-# combine posts seen with measures
-d_survey_seen_by_troll <- d_before_after_change_scale01 %>%
-  left_join(d_seen_by_troll, by = c(UserName = "username", "Condition")) %>%
-  filter(!is.na(prop_left_all) & # remove participants that don't have prop_seen data
-           Condition %in% c("Left", "Right") & # Remove control since people don't see troll posts
-           total_seen >= 50) # remove participants who saw less than 50 posts
-
-# set predictors 
-predictors <- c("prop_right",
-                "prop_left",
-                "prop_friendly")
-
-# set filter labels
-predictors_all <- paste0(predictors, "_all")
-predictors_nontroll <- paste0(predictors, "_nontroll")
-
-# set outcomes
-outcomes <- c(change_beliefs, change_consensus, change_trust, after_only_questions)
-
-
-cor_all <- correlation(
-  data  = d_survey_seen_by_troll %>% select(all_of(predictors_all)),
-  data2 = d_survey_seen_by_troll %>% select(all_of(outcomes))
-)
-
-cor_nontroll <- correlation(
-  data  = d_survey_seen_by_troll %>% select(all_of(predictors_nontroll)),
-  data2 = d_survey_seen_by_troll %>% select(all_of(outcomes))
-)
-
-#cor_diff <- cor_all - cor_nontroll
-
-
-# Convert to data frame for plotting
+# Heatmaps of the raw correlation matrices ────────────────────────────────────
 plot_cor_matrix <- function(cor_matrix, title) {
   cor_matrix %>%
     as.data.frame() %>%
@@ -116,6 +42,7 @@ plots <- ggarrange(
 plots
 ggsave(plot = plots, filename = here("R/visualise/plots/correlations.png"))
 
+# Dot-plot of all correlations, faceted by outcome category ────────────────────
 # Helper: assign outcome category label
 assign_category <- function(var) {
   factor(
@@ -128,21 +55,6 @@ assign_category <- function(var) {
     ),
     levels = c("Belief Change", "Consensus Change", "Trust Change", "After Only")
   )
-}
-
-# Tidy both correlation objects and bind
-tidy_cor <- function(cor_obj, label) {
-  cor_obj %>%
-    as.data.frame() %>%
-    select(Parameter1, Parameter2, r, CI_low, CI_high) %>%
-    mutate(
-      type      = label,
-      predictor = factor(
-        str_remove(Parameter1, "_all$|_nontroll$"),
-        levels = c("prop_right", "prop_left", "prop_friendly"),
-        labels = c("Prop. Right Seen", "Prop. Left Seen", "Prop. Friendly Seen")
-      )
-    )
 }
 
 keywords <- c("AI", "Trans", "Climate", "Israel")
@@ -204,6 +116,5 @@ p_dotplot <- ggplot(d_cor_plot,
        subtitle = "Transparent coefficients overlap with 0")
 p_dotplot
 ggsave(plot = p_dotplot,
-       filename = here(paste0("R/visualise/plots/correlations-dotplot",run_label,".png")),
+       filename = here(paste0("R/visualise/plots/correlations-dotplot", run_label, ".png")),
        width = 12, height = 6)
-

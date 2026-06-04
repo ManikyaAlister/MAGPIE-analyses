@@ -15,69 +15,11 @@ source(here("R/visualise/colour-palettes.R"))
 ```
 
 ```{r}
-# load activity/conversation data 
-d_statuses_annotated <- read_csv(here("data/magpie/processed/combined/combined_statuses_with_original_annotations.csv")) %>%
-  mutate(StatusID = as.character(StatusID),
-         StatusReplyID = as.character(StatusReplyID),
-         StatusReblogID = as.character(StatusReblogID),
-         Condition = factor(Condition, levels = c("Left", "Control", "Right"))) %>%
-  select(Subject:last_col()) # remove redundant columns before Subject made from csv conversion
-
-
-# Count how many times each StatusID appears in StatusReplyID
-reply_counts <- d_statuses_annotated %>%
-  count(StatusReplyID, name = "reply_count") %>%
-  rename(StatusID = StatusReplyID)
-
-# Join back to  main data
-d_statuses_annotated <- d_statuses_annotated %>%
-  left_join(reply_counts, by = "StatusID") %>%
-  mutate(reply_count = replace_na(reply_count, 0))
-
-
-# create summary variable of engagement
-d_base_summ <- d_statuses_annotated %>%
-  filter(UserName != "Admin") %>%
-  rename(ResponseType = Type) %>% 
-  mutate(Type = 
-    case_when(
-      Reply ~ "Reply",
-      !is.na(AccountReblog) ~ "Reblog",
-      Troll == 1 ~ "Troll Post",
-      TRUE ~ "Post"
-    )) %>%
-  group_by(Condition, category, Topic, Type) %>%
-  summarise(
-    n = n(),
-    n_reblog = sum(reblog_count, na.rm = TRUE),
-    n_fav = sum(fav_count, na.rm = TRUE),
-    n_reply = sum(reply_count, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-# Add favourites into "type" column for plotting
-fav_summ <- d_base_summ %>%
-  group_by(Condition, category, Topic) %>%
-  summarise(
-    Type = "Favourite",
-    n = sum(n_fav, na.rm = TRUE),
-    n_reblog = 0,
-    n_fav = sum(n_fav, na.rm = TRUE),
-    .groups = "drop"
-  ) %>% 
-  mutate(n_fav = NA) 
-
-# add favourites to base_sum
-d_engagement_summ <- bind_rows(d_base_summ, fav_summ) %>%
-  mutate(Type = factor(Type, 
-                       levels = c("Favourite","Reblog","Reply",
-                                  "Post", "Troll Post")),
-         Topic = factor(Topic, levels = c("AI", "Climate", "Israel", "Trans", "Friendly", "Meta", "Offtopic")))
-
-
-# set colour sale of status plots 
-status_colours <- c("Post"="darkgreen","Reply"="lightgreen","Reblog"="orange4",
-                     "Favourite"="orange2", "Troll Post" = "yellow")
+# Engagement data prep (d_statuses_annotated, d_engagement_summ, status_colours)
+# and the manuscript chi-square tests (chisq_composition, chisq_polarity,
+# chisq_friendly) are defined in a shared script. The same script is sourced by
+# 04_supplementary-materials.qmd, where the standardised residuals are reported.
+source(here("R/analyse/engagement-chisq.R"))
 ```
 ```{r}
 p_engage_total <- d_engagement_summ %>%
@@ -104,28 +46,10 @@ ggsave(paste0("R/visualise/plots/engagement/engagement-by-condition.png"),
 ```
 
 ```{r}
-# Aggregate counts across category/topic if needed
-chi_df <- d_engagement_summ %>%
-  filter(Type !="Troll Post")%>%
-  group_by(Condition, Type) %>%
-  summarise(n = sum(n), .groups = "drop")
-
-# Convert to contingency table
-chi_table <- chi_df %>%
-  pivot_wider(
-    names_from  = Type,
-    values_from = n,
-    values_fill = 0
-  ) %>%
-  column_to_rownames("Condition") %>%
-  as.matrix()
-
-chisq_test <- chisq.test(chi_table)
-chisq_test
-
-chisq_test$stdres
-
-
+# Composition of engagement types (Post/Reply/Reblog/Favourite) across conditions.
+# Computed in the sourced script; standardised residuals are reported in the
+# Supplementary Analyses (04_supplementary-materials.qmd).
+chisq_composition
 ```
 
 
@@ -159,89 +83,15 @@ ggsave(paste0("R/visualise/plots/engagement/engagement-by-polarity.png"),
        width=12,height=8, units="cm")
 ```
 
-Below, I have run Chi Squared tests where I compare, for each respective engagement type (post, reply, etc), whether the frequency of that type was the same across polarities and conditions. For example, was the political breakdown of replies in each polarity category equal across conditions? Or were there, for example, more left-wing posts in the Left condition? 
+We can also ask whether the political polarity of engagement (left, neutral, right) was the same across conditions. E.g., was there a higher share of right wing posts and replies in the right wing condition compared to control/left? We test this separately for each engagement type (Post, Reply, Reblog, Favourite). These tests are computed in the sourced script (`chisq_polarity`); the standardised residuals are reported in the Supplementary Analyses (`04_supplementary-materials.qmd`).
 
 ```{r}
-types <- unique(d_engagement_summ$Type)
-types <- types[types != "Troll Post"]
-
-gof_results <- list()
-
-for (t in types) {
-
-  df_t <- d_engagement_summ %>%
-    filter(
-      Type == t,
-      category != "not_applicable"
-    ) %>%
-    group_by(Condition, category) %>%
-    summarise(n = sum(n), .groups = "drop")
-
-  # run a goodness-of-fit test *within each condition*
-  gof_results[[t]] <- df_t %>%
-    group_split(Condition) %>%
-    lapply(function(df_c) {
-
-      obs <- df_c$n
-      names(obs) <- df_c$category
-
-      # equal-proportion null
-      exp <- rep(1 / length(obs), length(obs))
-
-      test <- chisq.test(obs, p = exp)
-
-      list(
-        condition = unique(df_c$Condition),
-        observed  = obs,
-        expected  = exp,
-        test      = test,
-        stdres    = test$stdres
-      )
-    })
-}
-
-gof_results
-
-```
-We can also ask whether the propostion of post polarity was the same across different conditions. E.g., was there a higher share of right wing posts and replies in the right wing condition compared to control/left?
-
-```{r}
-types <- unique(d_engagement_summ$Type)
-types <- types[types != "Troll Post"]
-
-between_results <- list()
-
-for (t in types) {
-
-  df_t <- d_engagement_summ %>%
-    filter(
-      Type == t,
-      #category != c("not_applicable")
-      category %in% c("Left", "Right")
-    ) %>%
-    group_by(Condition, category) %>%
-    summarise(n = sum(n), .groups = "drop")
-
-  chi_table <- df_t %>%
-    pivot_wider(
-      names_from = Condition,
-      values_from = n,
-      values_fill = 0
-    ) %>%
-    column_to_rownames("category") %>%
-    as.matrix()
-
-  chi_test <- chisq.test(chi_table)
-
-  between_results[[t]] <- list(
-    table = chi_table,
-    prop_by_condition = prop.table(chi_table, margin = 2),
-    test = chi_test,
-    stdres = chi_test$stdres
-  )
-}
-
-between_results
+imap_dfr(chisq_polarity, ~ tibble(
+  `Engagement type` = .y,
+  `chi-square`      = round(.x$statistic, 2),
+  df                = .x$parameter,
+  `p-value`         = signif(.x$p.value, 3)
+))
 ```
 
 
@@ -334,39 +184,13 @@ ggsave(paste0("R/visualise/plots/engagement/engagement-by-topic.png"),
 
 ```
 
-Let's see whether the "friendly" engagement is evenly distributed across conditions. ** Change this so that it's just looking at the proportion of friendly vs. non friendly posts + replies in each condition. **
+Let's see whether the "friendly" engagement is evenly distributed across conditions. 
 
 ```{r}
-# Step 1: Sum friendly posts/replies per condition
-friendly_counts <- d_engagement_summ %>%
-  filter(Type %in% c("Post", "Reply")) %>%      # keep only Posts and Replies
-  group_by(Condition, Topic) %>%
-  summarise(n = sum(n), .groups = "drop") %>%
-  pivot_wider(
-    names_from = Topic,
-    values_from = n,
-    values_fill = 0
-  )
-
-# Step 2: Calculate total posts/replies (friendly + non-friendly)
-friendly_counts <- friendly_counts %>%
-  mutate(
-    total = rowSums(select(., -Condition)),
-    non_friendly = total - Friendly
-  )
-
-# Step 3: Create contingency table for chi-square
-chi_table <- friendly_counts %>%
-  select(Condition, Friendly, non_friendly) %>%
-  column_to_rownames("Condition") %>%
-  as.matrix()
-
-# Step 4: Run chi-square test
-chisq_test <- chisq.test(chi_table)
-chisq_test
-
-# Standardized residuals
-chisq_test$stdres
+# Friendly vs non-friendly engagement (posts and replies) across conditions.
+# Computed in the sourced script; standardised residuals are reported in the
+# Supplementary Analyses (04_supplementary-materials.qmd).
+chisq_friendly
 ```
 
 
@@ -388,33 +212,16 @@ troll_accounts <- unique(d_statuses_annotated[d_statuses_annotated$Troll == 1, "
 
 polarity_of_replies_received <- d_activity_annotated_with_reply_polarity %>%
   group_by(AccountReply, Condition, Topic, category) %>%
-  summarise(TotalRepliesReceived = sum(!is.na(AccountReply), na.rm = TRUE),
-            LeftReceived = sum(category == "Left", na.rm = TRUE),
-            RightReceived = sum(category == "Right", na.rm = TRUE),
-            PropRightReceived = RightReceived - TotalRepliesReceived, 
-            PropRightVsLeftReceived = RightReceived - LeftReceived, 
-            PropFriendlyReceived = sum(Topic == "Friendly", na.rm = TRUE) - TotalRepliesReceived, 
-            PropLeftReceived = LeftReceived - TotalRepliesReceived, 
-            NeutralReceived = sum(category == "Neutral" | is.na(category)),
+  summarise(NeutralReceived = sum(category == "Neutral" | is.na(category)),
             DissentingLeftReceived = sum(category == "Left" & ReplyPolarity == "Right", na.rm = TRUE), # Left wing replies to right wing posts
             DissentingRightReceived = sum(category == "Right" & ReplyPolarity == "Left", na.rm = TRUE), # Right wing replies to left wing posts
-            PropDissentingRightReceived = DissentingRightReceived - DissentingLeftReceived,
             SupportingLeftReceived = sum(category == "Left" & ReplyPolarity == "Left", na.rm = TRUE), # Left wing replies to left wing posts
-            SupportingRightReceived = sum(category == "Right" & ReplyPolarity == "Right", na.rm = TRUE), # Left wing replies to right wing posts
-            PropSupportingRightReceived = SupportingRightReceived - SupportingLeftReceived,
-            TotalFavouritesReceived = sum(fav_count, na.rm = TRUE) ,
+            SupportingRightReceived = sum(category == "Right" & ReplyPolarity == "Right", na.rm = TRUE), # Right wing replies to right wing posts
   ) %>%
-  # remove confederate accounts 
+  # remove confederate accounts
   filter(!AccountReply %in% troll_accounts) %>%
   rename("UserName" = AccountReply)
   
-d_replies_polarity_long <- polarity_of_replies_received %>%
-  pivot_longer(
-    cols = c("LeftReceived", "RightReceived", "NeutralReceived"),
-    names_to = c("ReplyPolarity"),
-    values_to = "Count"
-  )
-
 d_replies_type_long <- polarity_of_replies_received %>%
          #   mutate(Dissenting = DissentingLeftReceived + DissentingRightReceived,
          # Supporting = SupportingLeftReceived + SupportingRightReceived) %>%

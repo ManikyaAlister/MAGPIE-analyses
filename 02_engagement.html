@@ -23,18 +23,18 @@ ul.task-list li input[type="checkbox"] {
 </style>
 
 
-<script src="02_explore-engagement_files/libs/clipboard/clipboard.min.js"></script>
-<script src="02_explore-engagement_files/libs/quarto-html/quarto.js" type="module"></script>
-<script src="02_explore-engagement_files/libs/quarto-html/tabsets/tabsets.js" type="module"></script>
-<script src="02_explore-engagement_files/libs/quarto-html/axe/axe-check.js" type="module"></script>
-<script src="02_explore-engagement_files/libs/quarto-html/popper.min.js"></script>
-<script src="02_explore-engagement_files/libs/quarto-html/tippy.umd.min.js"></script>
-<script src="02_explore-engagement_files/libs/quarto-html/anchor.min.js"></script>
-<link href="02_explore-engagement_files/libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="02_explore-engagement_files/libs/quarto-html/quarto-syntax-highlighting-7b89279ff1a6dce999919e0e67d4d9ec.css" rel="stylesheet" id="quarto-text-highlighting-styles">
-<script src="02_explore-engagement_files/libs/bootstrap/bootstrap.min.js"></script>
-<link href="02_explore-engagement_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="02_explore-engagement_files/libs/bootstrap/bootstrap-d6a003b94517c951b2d65075d42fb01b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script src="02_engagement_files/libs/clipboard/clipboard.min.js"></script>
+<script src="02_engagement_files/libs/quarto-html/quarto.js" type="module"></script>
+<script src="02_engagement_files/libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="02_engagement_files/libs/quarto-html/axe/axe-check.js" type="module"></script>
+<script src="02_engagement_files/libs/quarto-html/popper.min.js"></script>
+<script src="02_engagement_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="02_engagement_files/libs/quarto-html/anchor.min.js"></script>
+<link href="02_engagement_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="02_engagement_files/libs/quarto-html/quarto-syntax-highlighting-7b89279ff1a6dce999919e0e67d4d9ec.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="02_engagement_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="02_engagement_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="02_engagement_files/libs/bootstrap/bootstrap-d6a003b94517c951b2d65075d42fb01b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 
 
 </head>
@@ -68,7 +68,7 @@ ul.task-list li input[type="checkbox"] {
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="02_explore-engagement_files/figure-html/unnamed-chunk-3-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="02_engagement_files/figure-html/unnamed-chunk-3-1.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
@@ -78,436 +78,29 @@ ul.task-list li input[type="checkbox"] {
 <pre><code>
     Pearson's Chi-squared test
 
-data:  chi_table
+data:  chi_table_composition
 X-squared = 278.11, df = 6, p-value &lt; 2.2e-16</code></pre>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>        Favourite     Reblog       Reply      Post
-Left     5.415360 -12.000769  0.24319435  1.083089
-Control  1.304131  -3.576064 -0.20614357  1.347409
-Right   -6.830829  15.783776 -0.05740331 -2.389747</code></pre>
 </div>
 </div>
 <div class="cell">
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="02_explore-engagement_files/figure-html/unnamed-chunk-5-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="02_engagement_files/figure-html/unnamed-chunk-5-1.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
 </div>
-<p>Below, I have run Chi Squared tests where I compare, for each respective engagement type (post, reply, etc), whether the frequency of that type was the same across polarities and conditions. For example, was the political breakdown of replies in each polarity category equal across conditions? Or were there, for example, more left-wing posts in the Left condition?</p>
+<p>We can also ask whether the political polarity of engagement (left, neutral, right) was the same across conditions. E.g., was there a higher share of right wing posts and replies in the right wing condition compared to control/left? We test this separately for each engagement type (Post, Reply, Reblog, Favourite). These tests are computed in the sourced script (<code>chisq_polarity</code>); the standardised residuals are reported in the Supplementary Analyses (<code>04_supplementary-materials.qmd</code>).</p>
 <div class="cell">
 <div class="cell-output cell-output-stdout">
-<pre><code>$Post
-$Post[[1]]
-$Post[[1]]$condition
-[1] Left
-Levels: Left Control Right
-
-$Post[[1]]$observed
-   Left Neutral   Right 
-    143      91      80 
-
-$Post[[1]]$expected
-[1] 0.3333333 0.3333333 0.3333333
-
-$Post[[1]]$test
-
-    Chi-squared test for given probabilities
-
-data:  obs
-X-squared = 21.637, df = 2, p-value = 2.003e-05
-
-
-$Post[[1]]$stdres
-     Left   Neutral     Right 
- 4.589000 -1.636078 -2.952921 
-
-
-$Post[[2]]
-$Post[[2]]$condition
-[1] Control
-Levels: Left Control Right
-
-$Post[[2]]$observed
-   Left Neutral   Right 
-    102      79      59 
-
-$Post[[2]]$expected
-[1] 0.3333333 0.3333333 0.3333333
-
-$Post[[2]]$test
-
-    Chi-squared test for given probabilities
-
-data:  obs
-X-squared = 11.575, df = 2, p-value = 0.003066
-
-
-$Post[[2]]$stdres
-      Left    Neutral      Right 
- 3.0124741 -0.1369306 -2.8755434 
-
-
-$Post[[3]]
-$Post[[3]]$condition
-[1] Right
-Levels: Left Control Right
-
-$Post[[3]]$observed
-   Left Neutral   Right 
-    123      60      87 
-
-$Post[[3]]$expected
-[1] 0.3333333 0.3333333 0.3333333
-
-$Post[[3]]$test
-
-    Chi-squared test for given probabilities
-
-data:  obs
-X-squared = 22.2, df = 2, p-value = 1.511e-05
-
-
-$Post[[3]]$stdres
-      Left    Neutral      Right 
- 4.2602817 -3.8729833 -0.3872983 
-
-
-
-$Reblog
-$Reblog[[1]]
-$Reblog[[1]]$condition
-[1] Left
-Levels: Left Control Right
-
-$Reblog[[1]]$observed
-   Left Neutral   Right 
-    112      25      30 
-
-$Reblog[[1]]$expected
-[1] 0.3333333 0.3333333 0.3333333
-
-$Reblog[[1]]$test
-
-    Chi-squared test for given probabilities
-
-data:  obs
-X-squared = 85.737, df = 2, p-value &lt; 2.2e-16
-
-
-$Reblog[[1]]$stdres
-     Left   Neutral     Right 
- 9.247269 -5.034016 -4.213253 
-
-
-$Reblog[[2]]
-$Reblog[[2]]$condition
-[1] Control
-Levels: Left Control Right
-
-$Reblog[[2]]$observed
-   Left Neutral   Right 
-     70      55      51 
-
-$Reblog[[2]]$expected
-[1] 0.3333333 0.3333333 0.3333333
-
-$Reblog[[2]]$test
-
-    Chi-squared test for given probabilities
-
-data:  obs
-X-squared = 3.4205, df = 2, p-value = 0.1808
-
-
-$Reblog[[2]]$stdres
-     Left   Neutral     Right 
- 1.812206 -0.586302 -1.225904 
-
-
-$Reblog[[3]]
-$Reblog[[3]]$condition
-[1] Right
-Levels: Left Control Right
-
-$Reblog[[3]]$observed
-   Left Neutral   Right 
-    276      61     133 
-
-$Reblog[[3]]$expected
-[1] 0.3333333 0.3333333 0.3333333
-
-$Reblog[[3]]$test
-
-    Chi-squared test for given probabilities
-
-data:  obs
-X-squared = 152.89, df = 2, p-value &lt; 2.2e-16
-
-
-$Reblog[[3]]$stdres
-     Left   Neutral     Right 
-11.676673 -9.360908 -2.315765 
-
-
-
-$Reply
-$Reply[[1]]
-$Reply[[1]]$condition
-[1] Left
-Levels: Left Control Right
-
-$Reply[[1]]$observed
-   Left Neutral   Right 
-    826     275     510 
-
-$Reply[[1]]$expected
-[1] 0.3333333 0.3333333 0.3333333
-
-$Reply[[1]]$test
-
-    Chi-squared test for given probabilities
-
-data:  obs
-X-squared = 284.72, df = 2, p-value &lt; 2.2e-16
-
-
-$Reply[[1]]$stdres
-      Left    Neutral      Right 
- 15.274125 -13.847130  -1.426994 
-
-
-$Reply[[2]]
-$Reply[[2]]$condition
-[1] Control
-Levels: Left Control Right
-
-$Reply[[2]]$observed
-   Left Neutral   Right 
-    560     249     349 
-
-$Reply[[2]]$expected
-[1] 0.3333333 0.3333333 0.3333333
-
-$Reply[[2]]$test
-
-    Chi-squared test for given probabilities
-
-data:  obs
-X-squared = 130.61, df = 2, p-value &lt; 2.2e-16
-
-
-$Reply[[2]]$stdres
-     Left   Neutral     Right 
-10.846790 -8.540289 -2.306501 
-
-
-$Reply[[3]]
-$Reply[[3]]$condition
-[1] Right
-Levels: Left Control Right
-
-$Reply[[3]]$observed
-   Left Neutral   Right 
-    800     266     531 
-
-$Reply[[3]]$expected
-[1] 0.3333333 0.3333333 0.3333333
-
-$Reply[[3]]$test
-
-    Chi-squared test for given probabilities
-
-data:  obs
-X-squared = 267.84, df = 2, p-value &lt; 2.2e-16
-
-
-$Reply[[3]]$stdres
-        Left      Neutral        Right 
- 14.20849535 -14.13771828  -0.07077706 
-
-
-
-$Favourite
-$Favourite[[1]]
-$Favourite[[1]]$condition
-[1] Left
-Levels: Left Control Right
-
-$Favourite[[1]]$observed
-   Left Neutral   Right 
-   1011     221     338 
-
-$Favourite[[1]]$expected
-[1] 0.3333333 0.3333333 0.3333333
-
-$Favourite[[1]]$test
-
-    Chi-squared test for given probabilities
-
-data:  obs
-X-squared = 694.72, df = 2, p-value &lt; 2.2e-16
-
-
-$Favourite[[1]]$stdres
-      Left    Neutral      Right 
- 26.108355 -16.186109  -9.922245 
-
-
-$Favourite[[2]]
-$Favourite[[2]]$condition
-[1] Control
-Levels: Left Control Right
-
-$Favourite[[2]]$observed
-   Left Neutral   Right 
-    612     261     249 
-
-$Favourite[[2]]$expected
-[1] 0.3333333 0.3333333 0.3333333
-
-$Favourite[[2]]$test
-
-    Chi-squared test for given probabilities
-
-data:  obs
-X-squared = 227.37, df = 2, p-value &lt; 2.2e-16
-
-
-$Favourite[[2]]$stdres
-     Left   Neutral     Right 
-15.072552 -7.156296 -7.916256 
-
-
-$Favourite[[3]]
-$Favourite[[3]]$condition
-[1] Right
-Levels: Left Control Right
-
-$Favourite[[3]]$observed
-   Left Neutral   Right 
-    762     161     458 
-
-$Favourite[[3]]$expected
-[1] 0.3333333 0.3333333 0.3333333
-
-$Favourite[[3]]$test
-
-    Chi-squared test for given probabilities
-
-data:  obs
-X-squared = 392.34, df = 2, p-value &lt; 2.2e-16
-
-
-$Favourite[[3]]$stdres
-       Left     Neutral       Right 
- 17.2201425 -17.0869481  -0.1331945 </code></pre>
-</div>
-</div>
-<p>We can also ask whether the propostion of post polarity was the same across different conditions. E.g., was there a higher share of right wing posts and replies in the right wing condition compared to control/left?</p>
-<div class="cell">
-<div class="cell-output cell-output-stdout">
-<pre><code>$Post
-$Post$table
-      Left Control Right
-Left   143     102   123
-Right   80      59    87
-
-$Post$prop_by_condition
-           Left   Control     Right
-Left  0.6412556 0.6335404 0.5857143
-Right 0.3587444 0.3664596 0.4142857
-
-$Post$test
-
-    Pearson's Chi-squared test
-
-data:  chi_table
-X-squared = 1.5994, df = 2, p-value = 0.4495
-
-
-$Post$stdres
-           Left    Control     Right
-Left   0.845603  0.4289069 -1.255297
-Right -0.845603 -0.4289069  1.255297
-
-
-$Reblog
-$Reblog$table
-      Left Control Right
-Left   112      70   276
-Right   30      51   133
-
-$Reblog$prop_by_condition
-           Left   Control     Right
-Left  0.7887324 0.5785124 0.6748166
-Right 0.2112676 0.4214876 0.3251834
-
-$Reblog$test
-
-    Pearson's Chi-squared test
-
-data:  chi_table
-X-squared = 13.52, df = 2, p-value = 0.001159
-
-
-$Reblog$stdres
-           Left   Control      Right
-Left   3.087121 -2.686686 -0.4670649
-Right -3.087121  2.686686  0.4670649
-
-
-$Reply
-$Reply$table
-      Left Control Right
-Left   826     560   800
-Right  510     349   531
-
-$Reply$prop_by_condition
-           Left   Control     Right
-Left  0.6182635 0.6160616 0.6010518
-Right 0.3817365 0.3839384 0.3989482
-
-$Reply$test
-
-    Pearson's Chi-squared test
-
-data:  chi_table
-X-squared = 0.94768, df = 2, p-value = 0.6226
-
-
-$Reply$stdres
-            Left    Control      Right
-Left   0.6599672  0.3412024 -0.9678013
-Right -0.6599672 -0.3412024  0.9678013
-
-
-$Favourite
-$Favourite$table
-      Left Control Right
-Left  1011     612   762
-Right  338     249   458
-
-$Favourite$prop_by_condition
-          Left   Control     Right
-Left  0.749444 0.7108014 0.6245902
-Right 0.250556 0.2891986 0.3754098
-
-$Favourite$test
-
-    Pearson's Chi-squared test
-
-data:  chi_table
-X-squared = 48.439, df = 2, p-value = 3.032e-11
-
-
-$Favourite$stdres
-           Left   Control     Right
-Left   5.543401  1.139304 -6.688351
-Right -5.543401 -1.139304  6.688351</code></pre>
+<pre><code># A tibble: 4 × 4
+  `Engagement type` `chi-square`    df `p-value`
+  &lt;chr&gt;                    &lt;dbl&gt; &lt;int&gt;     &lt;dbl&gt;
+1 Post                      9.17     4  5.69e- 2
+2 Reply                    13.4      4  9.47e- 3
+3 Reblog                   43.4      4  8.59e- 9
+4 Favourite               118.       4  1.14e-24</code></pre>
 </div>
 </div>
 <div class="cell">
@@ -520,7 +113,7 @@ Right -5.543401 -1.139304  6.688351</code></pre>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="02_explore-engagement_files/figure-html/unnamed-chunk-8-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="02_engagement_files/figure-html/unnamed-chunk-7-1.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
@@ -529,25 +122,19 @@ Right -5.543401 -1.139304  6.688351</code></pre>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="02_explore-engagement_files/figure-html/unnamed-chunk-9-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="02_engagement_files/figure-html/unnamed-chunk-8-1.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
 </div>
-<p>Let’s see whether the “friendly” engagement is evenly distributed across conditions. ** Change this so that it’s just looking at the proportion of friendly vs.&nbsp;non friendly posts + replies in each condition. **</p>
+<p>Let’s see whether the “friendly” engagement is evenly distributed across conditions.</p>
 <div class="cell">
 <div class="cell-output cell-output-stdout">
 <pre><code>
     Pearson's Chi-squared test
 
-data:  chi_table
+data:  chi_table_friendly
 X-squared = 64.858, df = 2, p-value = 8.246e-15</code></pre>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>         Friendly non_friendly
-Left     5.669529    -5.669529
-Control  2.142242    -2.142242
-Right   -7.929089     7.929089</code></pre>
 </div>
 </div>
 <section id="replies-received" class="level1">
@@ -556,7 +143,7 @@ Right   -7.929089     7.929089</code></pre>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="02_explore-engagement_files/figure-html/unnamed-chunk-12-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="02_engagement_files/figure-html/unnamed-chunk-11-1.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
@@ -568,7 +155,7 @@ Right   -7.929089     7.929089</code></pre>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="02_explore-engagement_files/figure-html/unnamed-chunk-13-1.png" class="img-fluid figure-img" width="1248"></p>
+<p><img src="02_engagement_files/figure-html/unnamed-chunk-12-1.png" class="img-fluid figure-img" width="1248"></p>
 </figure>
 </div>
 </div>

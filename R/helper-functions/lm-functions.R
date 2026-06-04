@@ -8,23 +8,6 @@ scale_to_01 <- function(x, n = length(x)) {
   (y * (n - 1) + 0.5) / n
 }
 
-#
-# # apply to data
-# d_before_after_change_scale01 <- d_before_after_change %>%
-#   mutate(across(
-#     where(is.numeric) &
-#       (ends_with("Before") | ends_with("After")),
-#     scale_to_01
-#   ))
-#
-# scale_to_01_beta <- function(x) {
-#   # First scale to [0, 1]
-#   x_scaled <- (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
-#   # Then transform to (0, 1) - strictly between, not including boundaries
-#   x_scaled <- pmin(pmax(x_scaled, 0.001), 0.999)
-#   return(x_scaled)
-# }
-
 runMultipleLMs = function(data,
                           variables,
                           predictors = "Condition",
@@ -358,53 +341,6 @@ plot_lm_and_bar = function(variable_groups,
   plot_list
 }
 
-
-# plotMultipleModelCoeffs <- function(model_output,
-#                                     control_var,
-#                                     title = NULL,
-#                                     xlab = "Estimate",
-#                                     ylab = "Model",
-#                                     legend.position = "top",
-#                                     xlim = NULL,
-#                                     by_topic = TRUE,
-#                                     Bayesian = TRUE,
-#                                     base_size = base_size) {
-#   
-#   clean <- model_output %>%
-#     filter(term != "(Intercept)") %>%
-#     mutate(term = as.character(term)) %>%
-#     group_by(model) %>%
-#     mutate(has_interaction = any(str_detect(term, fixed(":")))) %>%
-#     ungroup() %>%
-#     # remove control main effect only
-#     filter(!term %in% c(control_var, paste0("`", control_var, "`"))) %>%
-#     group_by(model, has_interaction) %>%
-#     filter(if (has_interaction[1]) str_detect(term, fixed(":")) else TRUE) %>%
-#     ungroup() %>%
-#     mutate(condition = case_when(
-#       grepl("ConditionLeft", term) ~ "Left",
-#       grepl("ConditionRight", term) ~ "Right",
-#       TRUE ~ "Not by condition"
-#     ))
-#   
-#   ggplot(clean, aes(x = estimate, y = model, colour = condition)) +
-#     geom_point(size = 3, position = position_dodge(width = 0.6)) +
-#     geom_errorbar(
-#       aes(
-#         xmin = estimate - 1.96 * std.error,
-#         xmax = estimate + 1.96 * std.error
-#       ),
-#       width = 0.2,
-#       position = position_dodge(width = 0.6)
-#     ) +
-#     geom_vline(xintercept = 0, linetype = "dashed", colour = "gray50") +
-#     labs(x = xlab, y = ylab, title = title) +
-#     theme_minimal(base_size = 14) +
-#     theme(
-#       panel.grid.major.y = element_blank(),
-#       legend.position = "none"
-#     )
-# }
 
 # load and combine posts seen data with survey data
 load_and_combine_data <- function(troll = "no_troll") {
