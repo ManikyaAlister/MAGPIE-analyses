@@ -32,6 +32,14 @@ loadAndCombineVisibility = function(label = NULL, visibility_threshold = 0){
       ConvID_unique  = paste(Condition, ConvID, sep = "_")  # ConvID is only unique within condition
     )
   
+  # figure out how many participants we have data for
+    n_by_cond <- combined_visibility %>%
+      distinct(username, Condition) %>%
+      count(Condition)
+    print("Number of participants with posts seen data in each condition")
+    print(n_by_cond)
+    
+    
   # ---- Join visibility with polarity annotations ----
   
   visibility_polarity <- combined_visibility %>%

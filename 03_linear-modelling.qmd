@@ -517,35 +517,41 @@ make_coef_panel = function(d, title, x_label, hide_y = FALSE) {
     ) +
     geom_point(size = 3, position = position_dodge(width = 0.5)) +
     facet_wrap(~ predictor, nrow = 1) +
-    scale_colour_manual(values = c(
-      "All Content (credible)"           = "#E15759",
-      "All Content (not credible)"       = scales::alpha("#E15759", 0.3),
-      "Non-Troll Content (credible)"     = "#4E79A7",
-      "Non-Troll Content (not credible)" = scales::alpha("#4E79A7", 0.3)
-    )) +
-    scale_shape_manual(values = c(
-      "All Content (credible)"           = 16,
-      "All Content (not credible)"       = 16,
-      "Non-Troll Content (credible)"     = 17,
-      "Non-Troll Content (not credible)" = 17
-    )) +
+    scale_colour_manual(
+      values = c(
+        "All Content (credible)"           = "#E15759",
+        "All Content (not credible)"       = scales::alpha("#E15759", 0.3),
+        "Non-Troll Content (credible)"     = "#4E79A7",
+        "Non-Troll Content (not credible)" = scales::alpha("#4E79A7", 0.3)
+      ),
+      drop = FALSE   # keep all 4 levels in legend even if absent from a panel
+    ) +
+    scale_shape_manual(
+      values = c(
+        "All Content (credible)"           = 16,
+        "All Content (not credible)"       = 16,
+        "Non-Troll Content (credible)"     = 17,
+        "Non-Troll Content (not credible)" = 17
+      ),
+      drop = FALSE
+    ) +
+    guides(
+      colour = guide_legend(ncol = 2),
+      shape  = "none"
+    )+
     theme_minimal(base_size = 12) +
     theme(
       strip.text       = element_text(face = "bold", size = 11),
       axis.title.x     = element_text(size = 12, colour = "grey40"),
       panel.spacing    = unit(0.6, "lines"),
       panel.grid.minor = element_blank(),
-      legend.position  = if (show_legend) "bottom" else "none",
       legend.text      = element_text(size = 14),
       title            = element_text(face = "bold", size = 14)
+      # legend.position intentionally omitted — controlled by assemble_grid
     ) +
     labs(x = x_label, y = NULL,
          colour = "", shape = "",
-         title  = title) +
-    guides(
-      colour = guide_legend(ncol = 2),
-      shape  = guide_legend(ncol = 2)
-    )
+         title  = title) 
 
   if (hide_y) p <- p + theme(axis.text.y  = element_blank(),
                               axis.ticks.y = element_blank())
@@ -556,15 +562,32 @@ make_coef_panel = function(d, title, x_label, hide_y = FALSE) {
 # Right column: trust + after_only (matching updated plotCoefficientsGrid layout)
 assemble_grid = function(p_beliefs, p_consensus, p_trust, p_after_list,
                           n_belief_vars, n_consensus_vars, n_trust_vars) {
-  col_left  <- wrap_plots(list(p_beliefs, p_consensus),
-                          ncol = 1,
-                          heights = c(n_belief_vars, n_consensus_vars))
-  col_right <- wrap_plots(c(list(p_trust), p_after_list),
-                          ncol = 1,
-                          heights = c(n_trust_vars, rep(1, length(p_after_list))))
 
-  (col_left | col_right) +
-    plot_layout(guides = "collect")
+  # Use p_trust — most likely to contain all 4 legend_group levels
+  legend <- cowplot::get_legend(
+    p_trust + theme(legend.position = "bottom") # need to make sure legend is taken from a plot that has all 4 levels
+  )
+
+  no_legend <- function(p) p + theme(legend.position = "none")
+
+  col_left  <- wrap_plots(
+    lapply(list(p_beliefs, p_consensus), no_legend),
+    ncol    = 1,
+    heights = c(n_belief_vars, n_consensus_vars)
+  )
+  col_right <- wrap_plots(
+    lapply(c(list(p_trust), p_after_list), no_legend),
+    ncol    = 1,
+    heights = c(n_trust_vars, rep(1, length(p_after_list)))
+  )
+
+  main <- col_left | col_right
+
+  cowplot::plot_grid(
+    main, legend,
+    ncol        = 1,
+    rel_heights = c(1, 0.05)
+  )
 }
 
 # ── BRMS coefficients ───────────────────
@@ -602,8 +625,8 @@ plotCoefficientsGrid = function(run_label = NULL, title = NULL,
                            "prop_right_nontroll + prop_left_nontroll")
       ) %>%
       mutate(
-        credible   = sign(Q2.5) == sign(Q97.5),
-        predictor  = case_when(
+        credible  = sign(Q2.5) == sign(Q97.5),
+        predictor = case_when(
           predictors %in% c("prop_right_all",    "prop_right_nontroll")    ~ "Prop. Right Seen",
           predictors %in% c("prop_left_all",     "prop_left_nontroll")     ~ "Prop. Left Seen",
           predictors %in% c("prop_friendly_all", "prop_friendly_nontroll") ~ "Prop. Friendly Seen"
