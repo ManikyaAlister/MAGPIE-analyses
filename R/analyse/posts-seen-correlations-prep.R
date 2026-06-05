@@ -6,11 +6,8 @@
 # measure, both for all content and for non-troll-initiated content only. Also
 # defines `tidy_cor()` and the outcome variable groups used downstream.
 #
-# This is the sourceable compute-only portion that used to live at the top of
-# post-seen-correlations.R. It is sourced by:
-#   - 04_supplementary-materials.qmd  (to draw the supplementary correlation grids)
-#   - post-seen-correlations.R        (exploratory heatmap / dot-plot figures)
-# so the computation is defined once rather than duplicated.
+# This is the sourceable compute-only portion, sourced by
+# 04_supplementary-materials.qmd to draw the supplementary correlation grids.
 #
 # Objects created in the calling environment:
 #   cor_all, cor_nontroll          correlation objects (package `correlation`)
