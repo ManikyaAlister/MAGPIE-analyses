@@ -15,12 +15,14 @@ The four numbered documents in [`analysis/`](analysis/) are the analyses. Each i
 a self-contained Quarto document; reading them top to bottom walks through every
 result in the paper. They are also rendered in html/pdf. 
 
+This project uses [Renv](https://rstudio.github.io/renv/articles/renv.html) to enable a reproduce R environment. Type `renv::restore()` into the r console after opening the `.Rproj` file (`MAGPIE-analyses.Rproj`) to install all packages and dependencies. 
+
 | Document | Covers | Paper |
 |---|---|---|
 | [`analysis/01_demographics.qmd`](analysis/01_demographics.qmd) | Sample demographics, political identification, initial beliefs | Figure 1 |
 | [`analysis/02_engagement.qmd`](analysis/02_engagement.qmd) | Engagement/activity on the platform + chi-square tests | Figure 2 |
 | [`analysis/03_linear-modelling.qmd`](analysis/03_linear-modelling.qmd) | Bayesian models of belief/perception/trust/experience change, and the posts-seen models | Figures 3–5 |
-| [`analysis/04_supplementary-materials.qmd`](analysis/04_supplementary-materials.qmd) | Chi-square standardised residuals, sub-measure breakdowns, sample comparison, correlation-based posts-seen analysis | Supplementary |
+| [`analysis/04_supplementary-analyses.qmd`](analysis/04_supplementary-analyses.qmd) | Chi-square standardised residuals, sub-measure breakdowns, sample comparison, correlation-based posts-seen analysis | Supplementary |
 
 Render them with `quarto render` (configured via [`_quarto.yml`](_quarto.yml) to
 run from the project root and render only `analysis/`), or open the project in
@@ -56,24 +58,6 @@ _quarto.yml        Project config (execute from root; render analysis/)
 | `posts-seen-correlations-prep.R` | Computes the posts-seen correlations for the supplementary figure (`04`) |
 | `posts-seen-grid-plots.R` | Builds the Figure 5 coefficient/correlation grids (`03` and `04`) |
 | `plot-linear-relationships.R` | Plotting helper used by preprocessing |
-
-## How the data was produced
-
-The committed files in `data/` are the analysis-ready inputs. They are generated
-by the scripts in [`R/preprocess/`](R/preprocess/) and [`R/models/`](R/models/);
-the original raw exports are not included in this repository.
-
-1. **Clean & merge surveys/conversations** — `cleanPriorData.Rmd`,
-   `cleanPosteriorData.Rmd`, `cleanConversationData.Rmd`, `mergeGlobalData.Rmd`,
-   then `data-preprocessing.R` → `before.Rdata`, `after.Rdata`,
-   `survey-before-after-change.Rdata`.
-2. **Fix corrupted post IDs / polarity labels** — `fix-corrupted-IDs.R` →
-   `combined_statuses_with_original_annotations.csv` (read by
-   `engagement-chisq.R`).
-3. **Summarise posts each participant saw** — `summarise-posts-seen.R` (reads the
-   `data/analytics/` viewport logs) → `posts-seen-by-user*.Rdata`.
-4. **Fit the posts-seen models** — `R/models/run-posts-seen-models.R` →
-   `output/models/posts-seen/weights/` (loaded to build Figure 5).
 
 ## Requirements
 
