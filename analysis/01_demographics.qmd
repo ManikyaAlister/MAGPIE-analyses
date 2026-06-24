@@ -1,0 +1,447 @@
+---
+title: "01_explore-demographics"
+format: html
+echo: false
+message: false
+warning:  false
+---
+
+```{r}
+library(here)
+library(tidyverse)
+library(rnaturalearth)
+library(rnaturalearthdata) 
+library(sf)
+library(see) # for half violin plots
+library(patchwork)
+
+
+source(here("R/functions/colour-palettes.R"))
+```
+
+
+# Demographics
+
+In this section, we will explore the characteristics of our sample. 
+
+```{r}
+# load "before" survey data
+d_before <- read_csv(here("data/magpie/original/combined/before.csv"))
+
+# set factor levels
+d_before <- d_before %>%
+  mutate(Education = factor(Education, levels = c("highschool", "somecollege","undergrad", "postgrad")), # roughly ordered by number of years
+         Religion = factor(Religion, levels = c("christian", "mormon", "jewish", "muslim", "eastern", "other", "none")),
+         Condition = factor(d_before$Condition, 
+                             levels=c("Left","Control","Right"))) # order doesn't matter as long as other/none are last
+
+# set factors 
+
+# 
+
+```
+
+
+```{r}
+
+demographic_table <- function(data, var, condition_var) {
+  
+  # Raw counts
+  tab <- table(data[[var]], data[[condition_var]])
+  tab_df <- as.data.frame.matrix(tab)
+  
+  # Total N
+  N <- sum(tab_df)
+  
+  # Compute percentages of the TOTAL sample
+  pct_total <- round(100 * tab_df / N)
+  
+  # Format cells as "count (xx%)"
+  formatted <- tab_df
+  for (i in seq_len(nrow(tab_df))) {
+    for (j in seq_len(ncol(tab_df))) {
+      formatted[i, j] <- paste0(
+        tab_df[i, j],
+        " (", pct_total[i, j], "%)"
+      )
+    }
+  }
+  
+  # Row totals (also % of N)
+  row_totals <- rowSums(tab_df)
+  row_totals_fmt <- paste0(
+    row_totals,
+    " (", round(100 * row_totals / N), "%)"
+  )
+  
+  # Add row totals
+  formatted$Total <- row_totals_fmt
+  
+  # Add row names as first column
+  formatted <- tibble::rownames_to_column(as.data.frame(formatted), var)
+  
+  return(formatted)
+}
+```
+
+## **Gender**
+
+```{r}
+demographic_table(d_before, "Gender", "Condition")
+```
+
+## **Trans**
+
+Someone was considered trans if their gender didn't match their sex, including nonbinary/genderqueer).
+
+```{r}
+demographic_table(d_before, "Trans", "Condition")
+```
+
+### **Orientation**
+
+Breakdown of sexual orientation of participants.
+
+```{r}
+#demographic_table(d_before, "Orientation", "Condition")
+```
+
+
+## **LGBQT**
+
+This is calculated by taking the answers to trans and orientation together. Someone was considered LGBTQ if they were trans (as defined above) or their orientation was anything other than straight. **Orientation is not in d_before for some reason**.
+
+```{r}
+demographic_table(d_before, "LGBT", "Condition")
+```
+
+
+## **Education**
+
+```{r}
+demographic_table(d_before, "Education", "Condition")
+```
+
+```{r}
+plot_dem_breakdown = function(data,
+                              var,
+                              colour_pallette = NULL,
+                              legend.position = "top",
+                              legend.rows = 2, 
+                              title_prefix = NULL) {
+  myTable <- d_before %>%
+    group_by(Condition, .data[[var]]) %>%
+    summarise(Number = n()) %>%
+    ungroup() %>%
+    filter(!is.na(.data[[var]]))
+  
+  
+  
+  p <- myTable %>%
+    ggplot(mapping = aes(y = Condition, x = Number, fill = .data[[var]])) +
+    geom_col(position = position_stack(reverse = TRUE),
+             colour = "black") +
+    theme_bw() +
+    theme(
+      axis.text.y = element_text(angle = 90, size = 10),
+      axis.ticks.y = element_blank(),
+      axis.ticks.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.title.x = element_blank(),
+      legend.position = legend.position,
+      legend.title = element_blank()
+    ) +
+    labs(title = paste0(title_prefix,var,""))+
+    guides(fill = guide_legend(nrow = legend.rows)) # Specifies the legend for the 'fillr' aesthetic
+
+  
+  if (!is.null(colour_pallette)) {
+    p <- p +
+      scale_fill_manual(values = colour_pallette)
+  }
+  
+  ggsave(paste0("output/figures/demographics/",var,"_breakdown.png"),
+       plot=p,device="png",
+       width=12,height=8, units="cm")
+  
+  p
+}
+
+
+```
+
+```{r}
+
+p_education <- plot_dem_breakdown(d_before, "Education", title_prefix = "B. ")
+
+p_education <- p_education + 
+    scale_fill_brewer(palette="Blues",direction=-1)
+
+p_education 
+
+# saving it again even though the function does it automatically because original doesn't have colour palette
+ggsave(paste0("output/figures/demographics/religion_breakdown.png"),
+       plot=p_education,device="png",
+       width=12,height=8, units="cm")
+```
+## **Religion**
+
+```{r}
+demographic_table(d_before, "Religion", "Condition")
+
+p_religion <- plot_dem_breakdown(d_before, "Religion", title_prefix = "C. ")
+
+p_religion <- p_religion + 
+    scale_fill_brewer(palette="Purples",direction=-1)
+
+p_religion
+
+# saving it again even though the function does it automatically because original doesn't have colour palette
+ggsave(paste0("output/figures/demographics/religion_breakdown.png"),
+       plot=p_religion,device="png",
+       width=12,height=8, units="cm")
+```
+## **Race**
+
+```{r}
+demographic_table(d_before, "Race", "Condition")
+
+```
+
+```{r}
+demographic_table(d_before, "Race", "Condition")
+
+p_race <- plot_dem_breakdown(d_before, "Race", title_prefix = "A. ")
+
+p_race <- p_race + 
+  scale_fill_brewer(palette="Greens",direction=-1) 
+
+p_race
+
+# saving it again even though the function does it automatically because original doesn't have colour palette
+ggsave(paste0("output/figures/demographics/Race_breakdown.png"),
+       plot=p_race,device="png",
+       width=12,height=8, units="cm")
+```
+### Middle Eastern
+
+It's useful to know what proportion of our sample had middle-eastern ethnicity, since that directly concerns the Israel/Palestine conflict. 
+
+```{r}
+demographic_table(d_before, "RaceMidEast", "Condition")
+```
+
+
+## **Political ID**
+
+Whether people identified as democrat/republican, etc. 
+
+```{r}
+demographic_table(d_before, "PoliticalID", "Condition")
+```
+
+```{r}
+p_polID <- plot_dem_breakdown(d_before, "PoliticalID", colour_pallette = politicalIDColours, legend.position = "top", legend.rows = 2)
+p_polID
+```
+
+### Political rating 
+
+Instead of just a categorical rating, we also asked how they identified numerically. Where  6 = strong Republican, 5 = Republican, 4 = slight Republican; 3 = independent; 2 = slight Democrat, 1 = Democrat, 0 = strong Democrat. 
+
+```{r}
+
+polID_num_sum <- d_before %>%
+  group_by(Condition) %>%
+  summarise(mean = mean(PoliticalIDNum, na.rm = TRUE), sd = sd(PoliticalIDNum, na.rm = TRUE), n = n()) %>%
+  mutate(se = sd/sqrt(n()))
+
+p_politicalID_num <- polID_num_sum %>%
+  ggplot(aes(x = Condition, y = mean - 3)) +
+  geom_jitter(data = d_before, aes(y = PoliticalIDNum - 3, color = PoliticalIDNum), 
+              position = position_jitter(height = 0.1, width = 0.2), alpha = 0.6) +
+    geom_point(aes(fill = mean), size = 3, alpha = .8) +
+    geom_errorbar(aes(ymin = mean - 3 - se, ymax = mean - 3 + se), width = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_fill_gradientn(
+    name = "Political ID",
+    colors = c("#3399CC", "#9999FF", "#CC0066"),
+    values = scales::rescale(c(0, 3, 6)),
+    limits = c(0, 6),
+    breaks = c(0, 3, 6),
+    labels = c(str_wrap("Strong Democrat",width = 5), "Independent", str_wrap("Strong Republican", width = 5)),
+    guide = guide_colorbar(barwidth = 9.5, barheight = 0.5, title.position = "top")
+  ) +
+  scale_color_gradientn(
+    name = "Political ID",
+    colors = c("#3399CC", "#9999FF", "#CC0066"),
+    values = scales::rescale(c(0, 3, 6)),
+    limits = c(0, 6),
+    breaks = c(0, 3, 6),
+labels = c(str_wrap("Strong Democrat",width = 5), "Independent", str_wrap("Strong Republican", width = 5)),    guide = guide_colorbar(barwidth = 9.5, barheight = 0.5, title.position = "top")
+  ) +
+  scale_y_continuous(
+    #limits = c(-3, 3),
+    breaks = c(-3, 0, 3), 
+    labels = c(str_wrap("Strong Democrat",width = 5), "Independent", str_wrap("Strong Republican", width = 5)),
+  ) +
+  coord_flip() +
+  theme_bw() +
+  labs(y = NULL, x = "Condition", title = "D. Political ID") +
+  theme(
+    legend.position = "top",
+    legend.direction = "horizontal",
+    legend.box = "horizontal",
+    legend.title = element_blank(),
+    #legend.title.align = 0.5
+  )
+p_politicalID_num
+
+```
+
+
+## **Location**
+
+Now we can look at where people come from. Let's use latitude and longitude for that as it is more exact (I rounded them to the closest whole number so as to keep people anonymous, so this gives their location within about a 60 mile square). 
+
+```{r}
+dtemp <- d_before %>% filter(TimePoint=="Before")
+world <- ne_countries(scale = "medium", returnclass = "sf")
+d_sf <- st_as_sf(dtemp, coords = c('LON', 'LAT'))
+
+p_location <- d_sf %>% 
+  st_set_crs(4326) %>%
+  ggplot() +
+    theme_bw() +
+    geom_sf(data=world,show.legend=FALSE,
+            colour="darkgrey",fill="white") +
+    geom_sf(aes(colour = PoliticalID),
+            alpha=0.7,show.legend=FALSE,size=1.5) +
+    coord_sf(xlim = c(-140,-50), ylim = c(10,60)) +
+    scale_fill_manual(values=politicalIDColours) +
+    scale_colour_manual(values=politicalIDColours) +
+    facet_wrap(~Condition,ncol=3) +
+    labs(title = "E. Location by political ID")+
+    theme(strip.background = element_rect(colour = "black", fill = "white"),
+          axis.title.x = element_blank(),
+          axis.text.x = element_blank(), 
+          axis.ticks.x = element_blank(),
+          plot.margin = margin(0, 0, 0,0, "pt")) 
+p_location
+
+ggsave("output/figures/demographics/location.png",
+       plot=p_location,device="png",
+       width=24,height=8, units="cm")
+```
+
+# Priors
+
+## **Beliefs**
+
+```{r}
+# function to put the by topic sub-ratings of a variable and the overall score in long format for plotting
+getLongVariable = function(d, variable) {
+  topics <- c("AI", "Trans", "Climate", "Israel")
+
+d_long <- d %>%
+  select(UserName, Condition, starts_with(variable)) %>%
+  pivot_longer(
+    cols = starts_with(variable),
+    names_to = "Topic",
+    values_to = variable
+  ) %>%
+  mutate(
+    Topic = case_when(
+      # Check if Topic contains any of the topics
+      str_detect(Topic, paste(topics, collapse = "|")) ~ 
+        str_extract(Topic, paste(topics, collapse = "|")),
+      # Otherwise, it's just variable or similar - replace with "Overall"
+      TRUE ~ "Overall"
+    )
+  )
+
+d_long
+}
+
+```
+
+```{r}
+plotViolin = function(d, variable, title, ylab, verbose = FALSE) {
+  topics <- c("AI", "Trans", "Climate", "Israel")
+  d_long <- getLongVariable(d,variable) %>%
+    mutate(Topic = factor(Topic, levels = c(topics,"Overall")))
+
+  if(verbose) print(head(d_long))
+
+  # create summary variable for mean and se 
+  d_summ <- d_long %>%
+    group_by(Condition, Topic) %>%
+    summarise(mean = mean(get(variable)), sd = sd(get(variable)), n = n()) %>%
+    mutate(se = sd/sqrt(n))
+  
+  if(verbose) print(d_summ)
+  
+  p <- d_long %>%
+    mutate(Condition = factor(Condition, levels = c("Left", "Control", "Right")))%>%
+    ggplot(mapping = aes(
+      x = Condition,
+      fill = Topic
+    )) +
+    geom_violinhalf(aes( y = get(variable)), alpha = .7) +
+    # add a point with the mean and error bars with SE
+    geom_point(data = d_summ, aes(y = mean)) + 
+    geom_errorbar(data = d_summ, aes(ymin = mean - se, ymax = mean + se), width = .1) + 
+    facet_wrap(~Topic, nrow = 1)+
+    scale_fill_manual(values = topicColours) +
+    scale_colour_manual(values = topicColours) +
+    scale_x_discrete(expand = expansion(add = c(0.1, 0.1))) +  # Add this line
+    #lims(y = c(0,NA))+
+    coord_flip()+
+    #scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +  # Add this line
+    theme_bw() +
+    geom_hline(yintercept = 50, linetype = "dashed")+
+    labs(#title = str_wrap(title,25),
+        title = title,
+         y = str_wrap(ylab,65),
+         x = "Troll Condition") +
+    theme(legend.position = "none", 
+          axis.text.y = element_text(angle = 90,hjust = 0.5),
+          strip.background = element_rect(colour = "black", fill = "white"))
+
+p
+}
+
+p_initial_beliefs <- plotViolin(d_before, "Belief", "F. Initial Political Beliefs", "Lower = more Left-wing, Higher = more Right-wing")
+p_initial_beliefs 
+ggsave(plot = p_initial_beliefs, filename = here("output/figures/priors/initial-beliefs.png"), width = 3, height = 10)
+
+```
+## **Perceptions of consensus**
+
+```{r}
+p_initial_consensus<- plotViolin(d_before, "Consensus", "Initial Perceived Consensus About Topics", "0 = no agreement, 100 = total agreement")
+p_initial_consensus
+ggsave(plot = p_initial_consensus, filename = here("output/figures/priors/initial-consensus.png"), width = 3, height = 10)
+```
+
+## **Relative Beliefs**
+
+```{r}
+p_initial_relative<- plotViolin(d_before, "Relative", "Initial Perceived Own Beliefs Relative to Population", "Lower = more left wing than population, higher = more right wing")
+p_initial_relative
+ggsave(plot = p_initial_relative, filename = here("output/figures/priors/initial-relative.png"), width = 3, height = 10)
+```
+
+# Combined demographics plot for manuscript 
+
+```{r}
+#| fig.width: 13
+#| fig.height: 11
+p_demographics<- (p_race|p_education|p_religion|p_politicalID_num) + plot_layout(widths = c(1,1,1,1.3))
+p_location_polid <- (p_location)#| p_polID) + plot_layout(widths = c(3, 1))
+
+p_combined <-(p_demographics / p_location_polid/ p_initial_beliefs)+ plot_layout(heights = c(2.8,3,2.8)) & theme(text = element_text(size = 12))
+p_combined
+ggsave(plot = p_combined, filename = here("output/figures/combined-demographics.png"), width = 13, height = 11)
+```
+

@@ -1,0 +1,457 @@
+---
+title: "Supplementary Analyses"
+subtitle: "Online influence on a custom social media platform"
+format:
+  pdf:
+    toc: true
+    toc-depth: 3
+    #embed-resources: true
+echo: false
+number-sections: true
+message: false
+warning: false
+---
+
+```{r}
+#| label: setup
+library(here)
+library(tidyverse)
+library(ggpubr)
+library(patchwork)
+library(cowplot)
+library(brms)
+
+# Shared helpers and colours
+source(here("R/functions/colour-palettes.R"))
+source(here("R/functions/lm-functions.R"))
+# Grid-plotting functions shared with the main analysis (03_linear-modelling.qmd)
+source(here("R/functions/posts-seen-grid-plots.R"))
+
+# These match the settings used in 03_linear-modelling.qmd: report the Bayesian
+# models, and load their saved output rather than re-fitting.
+Bayesian   <- TRUE
+run_models <- FALSE
+```
+
+```{r}
+#| label: data
+# load before and after data separately
+load(here("data/magpie/original/combined/before.Rdata"))
+load(here("data/magpie/original/combined/after.Rdata"))
+
+# load before, after, change combined data
+load(here("data/magpie/processed/combined/survey-before-after-change.Rdata"))
+
+# Outcome variable groups (same derivations as 03_linear-modelling.qmd)
+after_questions      <- colnames(d_after)
+after_only_questions <- c("PropLiked", "PropTrolls", "PropAligned",
+                          "MagpieSimilarity", "OverallExperience")
+
+change_partisan  <- c(after_questions[grepl("Dem", after_questions) |
+                                        grepl("Rep", after_questions)], "AffPol")
+change_beliefs   <- after_questions[grepl("Belief", after_questions) != grepl("Extreme", after_questions)]
+change_consensus <- after_questions[grepl("Consensus", after_questions)]
+change_relative  <- after_questions[grepl("Relative", after_questions)]
+change_trust     <- after_questions[grepl("Trust", after_questions)]
+change_trust     <- change_trust["WVSTrust" != change_trust]
+
+# scale all before/after/experience measures to (0, 1) for the Beta models
+d_before_after_change_scale01 <- d_before_after_change %>%
+  mutate(across(
+    where(is.numeric) &
+      (ends_with("Before") | ends_with("After") | any_of(after_only_questions)),
+    scale_to_01
+  ))
+
+# d_lm = scaled data fed to the models; d_bar = raw data for the bar plots
+d_lm  <- d_before_after_change_scale01
+d_bar <- d_before_after_change
+```
+
+# Overview
+
+This document collects the analyses referenced as "Supplementary Analyses" in
+the manuscript. The original code that generated the analyses in this document is in a quarto document available in the project repository. 
+
+# Standardised residuals for the chi-square tests of engagement
+
+The engagement results report several chi-square tests. Here we give the cellwise
+standardised residuals for each significant omnibus test, which indicate *which*
+cells drove the effect: a positive residual means the observed count was larger
+than expected under the null, a negative residual means it was smaller, and
+$|z| > 1.96$ corresponds roughly to $p < .05$. The tests themselves (and the
+figures they accompany) are reported in `02_engagement.qmd` of the code and data on the OSF and Github.
+
+```{r}
+#| label: engagement-chisq
+# Computes chisq_composition, chisq_polarity (list by engagement type), and
+# chisq_friendly, each carrying its standardised residuals in $stdres.
+source(here("R/functions/engagement-chisq.R"))
+```
+
+## Composition of engagement types across conditions
+
+The relative composition of engagement types (favourites, reblogs, replies, and
+original posts) differed across conditions,
+$\chi^2(`r chisq_composition$parameter`) = `r round(chisq_composition$statistic, 2)`$,
+$p < .001$. Residuals (rows = condition, columns = engagement type) show that the
+`Left` condition had more favourites and fewer reblogs than expected, while the
+`Right` condition showed the opposite pattern (more reblogs, fewer favourites)
+along with fewer original posts.
+
+```{r}
+#| label: residuals-composition
+knitr::kable(round(chisq_composition$stdres, 2))
+```
+
+## Political polarity of engagement across conditions
+
+For each engagement type we tested whether the political polarity of engagement
+(left, neutral, right) differed across conditions. Residuals (rows = polarity,
+columns = condition) show, for example, an over-representation of right-wing posts
+and an under-representation of neutral posts in the `Right` condition, with the
+strongest effects for reblogs and favourites.
+
+```{r}
+#| label: residuals-polarity
+#| results: asis
+for (t in names(chisq_polarity)) {
+  test <- chisq_polarity[[t]]
+  cat(sprintf("\n\n**%s** &mdash; $\\chi^2(%d) = %.2f$, $p = %.3f$\n\n",
+              t, test$parameter, test$statistic, test$p.value))
+  print(knitr::kable(round(test$stdres, 2)))
+}
+```
+
+## Friendly versus non-friendly engagement across conditions
+
+The number of friendly versus non-friendly engagements differed across conditions,
+$\chi^2(`r chisq_friendly$parameter`) = `r round(chisq_friendly$statistic, 2)`$,
+$p < .001$. Residuals (rows = condition) show that the `Right` condition had
+significantly fewer friendly engagements than expected while the `Left` condition
+had significantly more.
+
+```{r}
+#| label: residuals-friendly
+knitr::kable(round(chisq_friendly$stdres, 2))
+```
+
+# Linear modelling of each trust, affective polarisation, and relative-belief sub-measure
+
+The main text reports condition effects on the aggregate trust measure
+(`TrustOverall`), affective polarisation (`AffPol`), and relative-belief
+(`RelativePolitics`) measures (Figure 3). Here we break those down into their
+component sub-measures, using the same model structure
+(`measure After ~ measure Before + Condition`, Bayesian beta regression) as the main analysis. 
+
+## Trust and affective polarisation sub-measures
+
+The trust panel shows that, relative to the `Control`, trust in the `Left`
+condition decreased for businesses, universities, and the government, and that
+the increase in trust in other people was credibly smallest in the `Left`
+condition. Trust in the media was the only sub-measure with no credible
+difference from `Control`.
+
+```{r}
+#| label: trust-affpol-breakdown
+#| fig.width: 13
+#| fig.height: 19
+variable_groups <- list(
+  change_trust,
+  change_partisan
+)
+
+titles <- c(
+  "Trust Measures",
+  "Affective Polarisation Measures"
+)
+
+x_labs_lm = c(
+  "< 0 = trust less than control",
+  "< 0 = less polarised than control"
+)
+
+x_labs_bar = c(
+  "< 0 = became less trusting",
+  "< 0 = became less polarised"
+)
+
+p_list_aff_trust <- plot_lm_and_bar(
+  variable_groups,
+  x_labs_lm,
+  x_labs_bar,
+  titles,
+  d_lm,
+  d_bar,
+  change = TRUE,
+  ytext = TRUE,
+  ylim = c(-10, 10),
+  by_topic = FALSE,
+  Bayesian = Bayesian,
+  run_models = run_models
+)
+p_aff_trust <- ggarrange(
+  plotlist = p_list_aff_trust,
+  ncol = 1,
+  heights = c(1, 2)
+)
+p_aff_trust
+file = paste0("output/figures/combined-bar-lm-aff-trust-Bayes-", Bayesian, ".png")
+ggsave(filename = file, width = 30, height = 37, units = "cm", plot = p_aff_trust) # roughly a4 size
+```
+
+## Relative-belief sub-measures (by topic)
+
+"RelativePolitics" refers to the combined overall relative beliefs collapsed across each subdimension. 
+
+```{r}
+#| label: relative-breakdown
+#| fig.width: 13
+#| fig.height: 8
+variable_groups <- list(
+  change_relative
+)
+
+titles <- c(
+  "Perceived own beliefs relative to population, by topic"
+)
+
+x_labs_lm = c(
+  "< 0 = perceive beliefs more left wing than control"
+)
+
+x_labs_bar = c(
+  "< 0 = perceive beliefs more left wing than before"
+)
+
+p_list_relative <- plot_lm_and_bar(
+  variable_groups,
+  x_labs_lm,
+  x_labs_bar,
+  titles,
+  d_lm,
+  d_bar,
+  change = TRUE,
+  ytext = TRUE,
+  ylim = c(-10, 10),
+  by_topic = FALSE,
+  Bayesian = Bayesian,
+  run_models = run_models
+)
+p_relative <- ggarrange(
+  plotlist = p_list_relative,
+  ncol = 1,
+  heights = c(1, 2)
+)
+p_relative
+file = paste0("output/figures/combined-bar-lm-relative-Bayes-", Bayesian, ".png")
+ggsave(filename = file, width = 30, height = 37, units = "cm", plot = p_relative) # roughly a4 size
+```
+
+# Comparing the full sample to participants who did not have "posts seen" data available
+
+Posts-seen data could not be recorded for every participant (due to technical
+issues for ~12% in `Left`, ~23% in `Right`, ~2% in `Control`), and the
+posts-seen analysis was further restricted to participants who saw at least 50
+posts. Here we check that the sub-sample with usable posts-seen data did not
+differ from the full sample on the key baseline measures: initial beliefs
+(`BeliefBefore`), political identification (`PoliticalIDNum`), extremity of
+beliefs (`ExtremeBeliefBefore`), perceptions of consensus
+(`ConsensusPoliticsBefore`), and age. Since we don't use the control condition in this analysis, we exclude this condidion here. 
+
+```{r}
+#| label: sample-comparison
+#| fig.width: 8
+
+load(here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))
+
+d_seen_compare <- unique_posts_seen_by_user %>%
+  # Join the troll-only proportions
+  left_join(
+    unique_posts_seen_by_user_nontroll %>%
+      select(username, Condition, prop_right, prop_left) %>%
+      rename(prop_right_troll = prop_right,
+             prop_left_troll = prop_left),
+    by = c("username", "Condition")
+  ) %>%
+  # Join the non-troll proportions
+  left_join(
+    unique_posts_seen_by_user_troll %>%
+      select(username, Condition, prop_right, prop_left) %>%
+      rename(prop_right_nontroll = prop_right,
+             prop_left_nontroll = prop_left),
+    by = c("username", "Condition")
+  ) %>%
+  # Rename the all-posts proportions for clarity
+  rename(
+    prop_right_all = prop_right,
+    prop_left_all = prop_left
+  ) %>%
+  # Replace NAs with 0 (participants who saw no troll/non-troll content)
+  mutate(
+    prop_right_troll = replace_na(prop_right_troll, 0),
+    prop_left_troll = replace_na(prop_left_troll, 0),
+    prop_right_nontroll = replace_na(prop_right_nontroll, 0),
+    prop_left_nontroll = replace_na(prop_left_nontroll, 0)
+  ) 
+
+d_survey_compare <- d_before_after_change_scale01 %>%
+  left_join(
+    d_seen_compare,
+    by = c(UserName = "username", "Condition")
+  ) %>% filter(Condition != "Control")
+
+print(paste0("Posts seen data is missing for ", sum(is.na(d_survey_compare$prop_left_nontroll)), " participants total"))
+print("Breakdown by condition: ")
+# check number of missing in each condition
+d_survey_compare %>%
+  group_by(Condition) %>%
+  summarise(Missing = sum(is.na(prop_right_all)))
+
+summarise_vars = function(data) {
+  data %>%
+    summarise(
+      m_beliefs    = mean(BeliefBefore, na.rm = TRUE),
+      sd_beliefs   = sd(BeliefBefore, na.rm = TRUE),
+      m_polID      = mean(PoliticalIDNum, na.rm = TRUE),
+      sd_polID     = sd(PoliticalIDNum, na.rm = TRUE),
+      m_extreme    = mean(ExtremeBeliefBefore, na.rm = TRUE),
+      sd_extreme   = sd(ExtremeBeliefBefore, na.rm = TRUE),
+      m_consensus  = mean(ConsensusPoliticsBefore, na.rm = TRUE),
+      sd_consensus = sd(ConsensusPoliticsBefore, na.rm = TRUE),
+      m_age        = mean(Age, na.rm = TRUE),
+      sd_age       = sd(Age, na.rm = TRUE)
+    )
+}
+
+base_data <- d_survey_compare %>% filter(Condition != "Control")
+
+summary_stats <- bind_rows(
+  base_data %>% summarise_vars() %>% mutate(group = "Full Sample"),
+  base_data %>% filter(!is.na(prop_right_all)) %>% summarise_vars() %>% mutate(group = "Posts Seen Data Available")
+)
+
+# Pivot to long format for plotting
+summary_long <- summary_stats %>%
+  pivot_longer(
+    cols = -group,
+    names_to = c(".value", "variable"),
+    names_pattern = "(m|sd)_(.*)"
+  )
+
+# Bar graph
+ggplot(summary_long, aes(x = group, y = m, fill = group)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
+  geom_errorbar(
+    aes(ymin = m - sd, ymax = m + sd),
+    position = position_dodge(width = 0.8),
+    width = 0.25
+  ) +
+  facet_wrap(~ variable, scales = "free_y", labeller = labeller(variable = c(
+    "beliefs"   = "Belief Before",
+    "polID"     = "Political ID Before",
+    "extreme"   = "Extremity of Beliefs Before",
+    "consensus" = "Perceptions of Consensus Before",
+    "age"       = "Age"
+  ))) +
+  labs(
+    title = "Comparison of Variables by Posts Seen Data Availability",
+    x     = NULL,
+    y     = "Mean (Scaled except for age and Political ID)",
+    fill  = "Group"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x  = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom"
+  )
+```
+
+The means and standard errors of the baseline measures are very similar with and
+without the posts-seen restriction, indicating that the missing posts-seen data
+did not systematically bias the sub-sample.
+
+For completeness, the table below reports the mean and variance of the total
+proportion of political content seen in each condition, for all content, for
+troll-initiated content, and for non-troll-initiated content.
+
+```{r}
+#| label: posts-seen-variance
+d_survey_compare %>%
+  group_by(Condition) %>%
+  summarise(
+    var_troll     = var(prop_right_troll + prop_left_troll, na.rm = TRUE),
+    mean_troll    = mean(prop_right_troll + prop_left_troll, na.rm = TRUE),
+    var_nontroll  = var(prop_right_nontroll + prop_left_nontroll, na.rm = TRUE),
+    mean_nontroll = mean(prop_right_nontroll + prop_left_nontroll, na.rm = TRUE),
+    var_all       = var(prop_right_all + prop_left_all, na.rm = TRUE),
+    mean_all      = mean(prop_right_all + prop_left_all, na.rm = TRUE)
+  )
+```
+
+# Posts-seen analysis: correlation equivalent of Figure 5
+
+Figure 5 in the main text uses Bayesian beta-regression coefficients to relate
+the proportion of each post type a participant saw (Right, Left, Friendly) to the
+change in each outcome measure, comparing all content seen to non-troll-initiated
+content only. Here we reproduce that comparison using simple correlations rather
+than the regression models. 
+
+```{r}
+#| label: correlations-prep
+# Set the run configuration (50% visibility threshold), then compute the
+# correlation objects (cor_all, cor_nontroll, tidy_cor, and the Change-suffixed
+# outcome groups) used by plotCorrelationsGrid().
+run_label <- "_visibility50"
+source(here("R/functions/posts-seen-correlations-prep.R"))
+```
+
+```{r}
+#| label: correlations-grid-overall
+#| fig.width: 14
+#| fig.height: 9
+p_cor_grid <- plotCorrelationsGrid(trust_type = "overall")
+p_cor_grid
+ggsave(plot = p_cor_grid,
+       filename = here(paste0("output/figures/posts-seen-correlations-grid", run_label, ".png")),
+       width = 22, height = 14, units = "cm", scale = 2)
+```
+
+As in the main analysis, the credible correlations between the proportion of
+each post type seen and the outcome measures closely track the regression
+results, and credible associations with beliefs and perceptions of consensus
+disappear once troll-initiated content is removed. Note that there are a few additional credible effects, which may be because these correlations are slightly more powerful (at least for the before/after measures), but they are also less rigorous, so any effects that are not also seen in the model analyses should be interpreted with caution. 
+
+## Trust sub-measures (correlation and coefficient grids)
+
+The same posts-seen comparison broken down by individual trust sub-measure
+rather than the aggregate trust measure, shown both as correlations and as the
+Bayesian regression coefficients from Figure 5.
+
+## Correlations
+
+```{r}
+#| label: correlations-grid-trust-subscales
+#| fig.width: 14
+#| fig.height: 11
+p_cor_grid_supp <- plotCorrelationsGrid(trust_type = "subscales")
+p_cor_grid_supp
+ggsave(plot = p_cor_grid_supp,
+       filename = here(paste0("output/figures/posts-seen-correlations-grid-trust-subscales", run_label, ".png")),
+       width = 22, height = 18, units = "cm", scale = 2)
+```
+
+## Model Coefficients (same as in manuscript)
+
+
+```{r}
+#| label: coefficients-grid-trust-subscales
+#| fig.width: 14
+#| fig.height: 13
+p_coef_grid_supp <- plotCoefficientsGrid(run_label = run_label, trust_type = "subscales")
+p_coef_grid_supp
+ggsave(plot = p_coef_grid_supp,
+       filename = here(paste0("output/figures/posts-seen-coefficients-grid-trust-subscales", run_label, ".png")),
+       width = 14, height = 22, units = "cm", scale = 2)
+```

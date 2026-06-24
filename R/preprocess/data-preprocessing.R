@@ -1,6 +1,6 @@
 library(here)
 library(tidyverse)
-source(here("R/visualise/functions/plot-linear-relationships.R"))
+source(here("R/functions/plot-linear-relationships.R"))
 
 # load activity data
 #d_activity_annotated <- read.csv(here("data/magpie/processed/combined/combined_statuses_with_participant_ids.csv"))

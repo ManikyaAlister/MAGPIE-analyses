@@ -1,0 +1,10 @@
+project:
+  title: "MAGPIE analyses"
+  # Execute every document from the project root so that paths like
+  # here("data/...") and output/figures/... resolve regardless of where the
+  # .qmd lives (the analysis docs are under analysis/).
+  execute-dir: project
+  # `quarto render` only renders the analysis documents, not the preprocessing
+  # notebooks under R/preprocess/.
+  render:
+    - analysis/

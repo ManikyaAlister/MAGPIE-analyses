@@ -60,7 +60,7 @@ data/magpie/processed/left/*
 data/magpie/processed/right/*
 data/magpie/processed/control/*
 
-# Archive folder 
+# Archive folder
 Archive/*
 
 # DS Store
@@ -69,3 +69,6 @@ Archive/*
 
 
 
+
+/.quarto/
+**/*.quarto_ipynb
