@@ -33,6 +33,8 @@ By default the analysis documents **load pre-fitted model output**
 quickly. Set `run_models <- TRUE` in `03`/`04` to refit the Bayesian models from
 scratch (requires `brms`/Stan).
 
+The code book for the clean survey data that describes all of the measured variables is in [`R/preprocess/cleanPosteriorData.qmd`](R/preprocess/cleanPosteriorData.qmd) (after) and [`R/preprocess/cleanPiorData.qmd`](R/preprocess/cleanPriorData.qmd) (before)
+
 ## Repository layout
 
 ```

@@ -89,6 +89,7 @@ ul.task-list li input[type="checkbox"] {
 </table>
 <p>Render them with <code>quarto render</code> (configured via <a href="_quarto.yml"><code>_quarto.yml</code></a> to run from the project root and render only <code>analysis/</code>), or open the project in RStudio (<code>MAGPIE-analyses.Rproj</code>) and render individually.</p>
 <p>By default the analysis documents <strong>load pre-fitted model output</strong> (<code>run_models &lt;- FALSE</code>) from <a href="output/models/"><code>output/models/</code></a>, so they render quickly. Set <code>run_models &lt;- TRUE</code> in <code>03</code>/<code>04</code> to refit the Bayesian models from scratch (requires <code>brms</code>/Stan).</p>
+<p>The code book for the clean survey data that describes all of the measured variables is in <a href="R/preprocess/cleanPosteriorData.qmd"><code>R/preprocess/cleanPosteriorData.qmd</code></a> (after) and <a href="R/preprocess/cleanPriorData.qmd"><code>R/preprocess/cleanPiorData.qmd</code></a> (before)</p>
 </section>
 <section id="repository-layout" class="level2">
 <h2 class="anchored" data-anchor-id="repository-layout">Repository layout</h2>
