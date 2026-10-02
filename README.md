@@ -80,11 +80,13 @@ locale set.
 | Sample size per condition; gender, trans, sexual orientation, age, race, education, religion, political ID percentages | `01_demographics` → Demographics tables | |
 | "No significant differences between conditions" (demographics, political ID, initial beliefs) | `01_demographics` → *Balance across conditions* | |
 | **Figure 1** (sample characteristics) | `01_demographics` → *Combined demographics plot* | `output/figures/combined-demographics.png` |
-| Posts/replies per condition; troll share of content | `02_engagement` (first table) | |
+| Time spent on the platform per participant-day (share of days with 45+ minutes) | `02_engagement` → *Time spent on the platform* | |
+| Posts/replies per condition; troll share of content | `02_engagement` (table after time on platform) | |
 | χ²(6) = 278.11, composition of engagement types | `02_engagement`, test defined in `R/functions/engagement-chisq.R` | |
 | χ²(4) polarity tests for posts, replies, reblogs, favourites | `02_engagement` (table after Fig 2B) | |
 | χ²(2) = 64.86, friendly vs non-friendly | `02_engagement` | |
 | Troll posts' extra engagement and extra replies | `02_engagement` (printed sentences) | |
+| Correlation between initial beliefs and the political slant of each participant's posts, replies, and favourites | `02_engagement` → *Initial beliefs and the political slant of each participant's activity* | |
 | **Figure 2** (engagement) | `02_engagement` → *Combine* | `output/figures/combined-engagement.png` |
 | Before-survey means/SDs (consensus, relative belief, trust) and experience means/SDs | `03_linear-modelling` → *Initial values of measures* | |
 | **Figure 3** (condition effects on beliefs, consensus, relative belief, trust, affective polarisation) | `03_linear-modelling` → *Before/After Change variables* | `output/figures/combined-bar-lm-change-vars-Bayes-TRUE.png` |
@@ -102,8 +104,6 @@ locale set.
 These statistics are in the manuscript but rely on data or procedures that are
 not part of this repository:
 
-- **Time-on-platform** ("nearly 25% of daily contributions totalled 45 minutes or more"): session-duration data are not included.
-- **Correlations between belief strength and biased engagement** (r = .62, .46, .51): these need per-participant favouriting records, which are not in the shared status data.
 - **LLM polarity-classification reliability** (71% agreement with human raters): the classification prompts, model outputs, and rater codes are on the OSF.
 
 ---
@@ -148,6 +148,7 @@ analysis-ready versions of the raw survey, platform, and analytics exports.
 | `data/magpie/original/combined/demographics.csv` | Full demographics, including sexual orientation (rows for Before and After). |
 | `data/magpie/processed/combined/survey-before-after-change.Rdata` (`d_before_after_change`) | Before, After, and Change (After − Before) for every measure, joined. This is what the models use. |
 | `data/magpie/processed/combined/combined_statuses_with_original_annotations.csv` | Every post, reply, and reblog on the platform, with topic and LLM-coded political polarity (`category`). |
+| `data/magpie/processed/combined/favourites.csv` | Every favourite: who gave it (`FavouriterID`), to which status (`StatusID`), and when. |
 | `data/analytics/processed/{control,left,right}/visibility_events.csv` | Client-side viewport logs: one row per 1000 ms window in which a status was on screen, with the percentage visible. |
 | `data/magpie/processed/combined/posts-seen-by-user_visibility50.Rdata` | Per-participant counts and proportions of posts seen (all threads, troll-initiated threads, other threads), built by `R/preprocess/summarise-posts-seen.R`. |
 

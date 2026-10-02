@@ -64,11 +64,116 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
+<section id="time-spent-on-the-platform" class="level2">
+<h2 class="anchored" data-anchor-id="time-spent-on-the-platform">Time spent on the platform</h2>
+<p>Session durations were not logged directly, so daily time on the platform is reconstructed from every timestamped action each participant took: viewport events (a status coming into view for at least 1000 ms), and their own posts, replies, reblogs, and favourites. Within each participant and study day (the three 24-hour periods from the start of each condition’s run), consecutive actions belong to the same session unless they are separated by more than an inactivity threshold; daily time is the summed length of that day’s sessions. Short thresholds give conservative estimates (time between the last action and leaving the platform is never counted), so we report several. Participants with no viewport data contribute only their posting and favouriting timestamps, which underestimates their time, so results are also shown for participants with viewport data only.</p>
+<div class="cell">
+<div class="cell-output-display">
+<table class="caption-top table table-sm table-striped small">
+<colgroup>
+<col style="width: 32%">
+<col style="width: 20%">
+<col style="width: 18%">
+<col style="width: 14%">
+<col style="width: 14%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: right;">Inactivity threshold (min)</th>
+<th style="text-align: right;">Participant-days</th>
+<th style="text-align: right;">Median minutes</th>
+<th style="text-align: right;">% &gt;= 30 min</th>
+<th style="text-align: right;">% &gt;= 45 min</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">816</td>
+<td style="text-align: right;">29.3</td>
+<td style="text-align: right;">48.8</td>
+<td style="text-align: right;">25.5</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">10</td>
+<td style="text-align: right;">816</td>
+<td style="text-align: right;">36.7</td>
+<td style="text-align: right;">61.8</td>
+<td style="text-align: right;">38.1</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">15</td>
+<td style="text-align: right;">816</td>
+<td style="text-align: right;">40.4</td>
+<td style="text-align: right;">68.0</td>
+<td style="text-align: right;">43.8</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">30</td>
+<td style="text-align: right;">816</td>
+<td style="text-align: right;">46.8</td>
+<td style="text-align: right;">73.9</td>
+<td style="text-align: right;">52.5</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="cell-output-display">
+<table class="caption-top table table-sm table-striped small">
+<colgroup>
+<col style="width: 32%">
+<col style="width: 20%">
+<col style="width: 18%">
+<col style="width: 14%">
+<col style="width: 14%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: right;">Inactivity threshold (min)</th>
+<th style="text-align: right;">Participant-days</th>
+<th style="text-align: right;">Median minutes</th>
+<th style="text-align: right;">% &gt;= 30 min</th>
+<th style="text-align: right;">% &gt;= 45 min</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">654</td>
+<td style="text-align: right;">32.8</td>
+<td style="text-align: right;">56.4</td>
+<td style="text-align: right;">30.4</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">10</td>
+<td style="text-align: right;">654</td>
+<td style="text-align: right;">40.8</td>
+<td style="text-align: right;">68.2</td>
+<td style="text-align: right;">44.0</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">15</td>
+<td style="text-align: right;">654</td>
+<td style="text-align: right;">44.6</td>
+<td style="text-align: right;">73.5</td>
+<td style="text-align: right;">49.7</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">30</td>
+<td style="text-align: right;">654</td>
+<td style="text-align: right;">51.5</td>
+<td style="text-align: right;">78.9</td>
+<td style="text-align: right;">57.6</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
 <div class="cell">
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="02_engagement_files/figure-html/unnamed-chunk-3-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="02_engagement_files/figure-html/unnamed-chunk-4-1.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
@@ -97,7 +202,7 @@ X-squared = 279.06, df = 6, p-value &lt; 2.2e-16</code></pre>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="02_engagement_files/figure-html/unnamed-chunk-6-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="02_engagement_files/figure-html/unnamed-chunk-7-1.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
@@ -124,16 +229,30 @@ X-squared = 279.06, df = 6, p-value &lt; 2.2e-16</code></pre>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="02_engagement_files/figure-html/unnamed-chunk-8-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="02_engagement_files/figure-html/unnamed-chunk-9-1.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
+</div>
+</div>
+</section>
+<section id="initial-beliefs-and-the-political-slant-of-each-participants-activity" class="level2">
+<h2 class="anchored" data-anchor-id="initial-beliefs-and-the-political-slant-of-each-participants-activity">Initial beliefs and the political slant of each participant’s activity</h2>
+<p>Did participants’ own beliefs predict the political slant of what they posted and favourited? For each participant we take all of their posts, replies, and favourites that had a clear political polarity (Left or Right; neutral and non-political activity excluded) and compute the proportion that was right-wing. We then correlate this with their initial overall belief (<code>BeliefBefore</code>; 0 = left, 100 = right), separately in each condition. Favourites inherit the polarity of the post they were given to, and troll content is excluded (trolls never favourited). Participants with no polar activity are excluded.</p>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 3 × 4
+  Condition     n     r        p
+  &lt;fct&gt;     &lt;int&gt; &lt;dbl&gt;    &lt;dbl&gt;
+1 Left         99  0.65 2.5 e-13
+2 Control      93  0.7  4   e-15
+3 Right       109  0.75 4.70e-21</code></pre>
 </div>
 </div>
 <div class="cell">
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="02_engagement_files/figure-html/unnamed-chunk-9-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="02_engagement_files/figure-html/unnamed-chunk-11-1.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
@@ -148,13 +267,14 @@ data:  chi_table_friendly
 X-squared = 64.623, df = 2, p-value = 9.274e-15</code></pre>
 </div>
 </div>
+</section>
 <section id="replies-received" class="level1">
 <h1><strong>Replies received</strong></h1>
 <div class="cell">
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="02_engagement_files/figure-html/unnamed-chunk-12-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="02_engagement_files/figure-html/unnamed-chunk-14-1.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
@@ -166,7 +286,7 @@ X-squared = 64.623, df = 2, p-value = 9.274e-15</code></pre>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="02_engagement_files/figure-html/unnamed-chunk-13-1.png" class="img-fluid figure-img" width="1248"></p>
+<p><img src="02_engagement_files/figure-html/unnamed-chunk-15-1.png" class="img-fluid figure-img" width="1248"></p>
 </figure>
 </div>
 </div>

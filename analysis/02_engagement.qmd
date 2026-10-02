@@ -21,6 +21,61 @@ source(here("R/functions/colour-palettes.R"))
 # 04_supplementary-materials.qmd, where the standardised residuals are reported.
 source(here("R/functions/engagement-chisq.R"))
 ```
+
+## Time spent on the platform
+
+Session durations were not logged directly, so daily time on the platform is reconstructed from every timestamped action each participant took: viewport events (a status coming into view for at least 1000 ms), and their own posts, replies, reblogs, and favourites. Within each participant and study day (the three 24-hour periods from the start of each condition's run), consecutive actions belong to the same session unless they are separated by more than an inactivity threshold; daily time is the summed length of that day's sessions. Short thresholds give conservative estimates (time between the last action and leaving the platform is never counted), so we report several. Participants with no viewport data contribute only their posting and favouriting timestamps, which underestimates their time, so results are also shown for participants with viewport data only.
+
+```{r}
+load(here("data/magpie/processed/combined/survey-before-after-change.Rdata"))
+
+study_start <- c(Control = "2024-08-06 21:00:00", Left = "2024-09-03 20:30:00", Right = "2024-08-20 21:00:00")
+
+d_view_times <- map_dfr(c("control", "left", "right"), ~
+  read_csv(here("data/analytics/processed", .x, "visibility_events.csv"),
+           col_select = c(username, event_datetime)) %>%
+    transmute(Condition = str_to_title(.x), UserName = username, t = event_datetime, source = "view"))
+
+d_action_times <- bind_rows(
+  d_view_times,
+  d_statuses_annotated %>%
+    filter(Troll != 1) %>%
+    transmute(Condition = as.character(Condition), UserName, t = Time, source = "status"),
+  read_csv(here("data/magpie/processed/combined/favourites.csv")) %>%
+    transmute(Condition, UserName = FavouriterID, t = Time, source = "favourite")
+) %>%
+  semi_join(d_before_after_change, by = c("UserName", "Condition")) %>%
+  mutate(day = floor(as.numeric(difftime(t, ymd_hms(study_start[Condition]), units = "hours")) / 24) + 1) %>%
+  filter(day %in% 1:3) %>%
+  arrange(Condition, UserName, t)
+
+daily_minutes <- function(gap_min) {
+  d_action_times %>%
+    group_by(Condition, UserName, day) %>%
+    mutate(session = cumsum(is.na(lag(t)) | as.numeric(t - lag(t), units = "mins") > gap_min)) %>%
+    group_by(Condition, UserName, day, session) %>%
+    summarise(minutes = as.numeric(max(t) - min(t), units = "mins"), .groups = "drop") %>%
+    group_by(Condition, UserName, day) %>%
+    summarise(minutes = sum(minutes), .groups = "drop") %>%
+    mutate(`Inactivity threshold (min)` = gap_min)
+}
+
+d_daily_minutes <- map_dfr(c(5, 10, 15, 30), daily_minutes)
+has_view_data <- distinct(d_view_times, Condition, UserName)
+
+summarise_daily <- function(d) d %>%
+  group_by(`Inactivity threshold (min)`) %>%
+  summarise(`Participant-days` = n(),
+            `Median minutes` = round(median(minutes), 1),
+            `% >= 30 min` = round(100 * mean(minutes >= 30), 1),
+            `% >= 45 min` = round(100 * mean(minutes >= 45), 1))
+
+# all participants
+knitr::kable(summarise_daily(d_daily_minutes))
+# participants with viewport data only
+knitr::kable(summarise_daily(semi_join(d_daily_minutes, has_view_data, by = c("Condition", "UserName"))))
+```
+
 ```{r}
 p_engage_total <- d_engagement_summ %>%
   group_by(Condition, Type) %>%
@@ -168,6 +223,46 @@ ggsave(paste0("output/figures/engagement/troll-engagement.png"),
        width=12,height=8, units="cm")
 
 p_troll_engagement
+```
+
+## Initial beliefs and the political slant of each participant's activity
+
+Did participants' own beliefs predict the political slant of what they posted and favourited? For each participant we take all of their posts, replies, and favourites that had a clear political polarity (Left or Right; neutral and non-political activity excluded) and compute the proportion that was right-wing. We then correlate this with their initial overall belief (`BeliefBefore`; 0 = left, 100 = right), separately in each condition. Favourites inherit the polarity of the post they were given to, and troll content is excluded (trolls never favourited). Participants with no polar activity are excluded.
+
+```{r}
+load(here("data/magpie/processed/combined/survey-before-after-change.Rdata"))
+
+# who favourited which status (StatusID converted the same way as in the status data)
+d_favourites <- read_csv(here("data/magpie/processed/combined/favourites.csv")) %>%
+  filter(FavouriterID != "Admin") %>%
+  mutate(StatusID = as.character(StatusID))
+
+d_polar_activity <- bind_rows(
+  # posts and replies written by participants
+  d_statuses_annotated %>%
+    filter(Troll != 1, UserName != "Admin", is.na(AccountReblog)) %>%
+    transmute(Condition = as.character(Condition), UserName, category),
+  # favourites given by participants, with the polarity of the favourited status
+  d_favourites %>%
+    left_join(d_statuses_annotated %>%
+                transmute(StatusID, Condition = as.character(Condition), category),
+              by = c("StatusID", "Condition")) %>%
+    transmute(Condition, UserName = FavouriterID, category)
+) %>%
+  filter(category %in% c("Left", "Right")) %>%
+  group_by(Condition, UserName) %>%
+  summarise(n_polar = n(), prop_right_activity = mean(category == "Right"), .groups = "drop")
+
+d_activity_beliefs <- d_before_after_change %>%
+  select(UserName, Condition, BeliefBefore) %>%
+  inner_join(d_polar_activity, by = c("UserName", "Condition")) %>%
+  mutate(Condition = factor(Condition, levels = c("Left", "Control", "Right")))
+
+d_activity_beliefs %>%
+  group_by(Condition) %>%
+  summarise(n = n(),
+            r = round(cor(BeliefBefore, prop_right_activity), 2),
+            p = signif(cor.test(BeliefBefore, prop_right_activity)$p.value, 2))
 ```
 
 ```{r}

@@ -181,28 +181,38 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><code>output/figures/combined-demographics.png</code></td>
 </tr>
 <tr class="even">
-<td>Posts/replies per condition; troll share of content</td>
-<td><code>02_engagement</code> (first table)</td>
+<td>Time spent on the platform per participant-day (share of days with 45+ minutes)</td>
+<td><code>02_engagement</code> → <em>Time spent on the platform</em></td>
 <td></td>
 </tr>
 <tr class="odd">
+<td>Posts/replies per condition; troll share of content</td>
+<td><code>02_engagement</code> (table after time on platform)</td>
+<td></td>
+</tr>
+<tr class="even">
 <td>χ²(6) = 278.11, composition of engagement types</td>
 <td><code>02_engagement</code>, test defined in <code>R/functions/engagement-chisq.R</code></td>
 <td></td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>χ²(4) polarity tests for posts, replies, reblogs, favourites</td>
 <td><code>02_engagement</code> (table after Fig 2B)</td>
 <td></td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>χ²(2) = 64.86, friendly vs non-friendly</td>
 <td><code>02_engagement</code></td>
 <td></td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>Troll posts’ extra engagement and extra replies</td>
 <td><code>02_engagement</code> (printed sentences)</td>
+<td></td>
+</tr>
+<tr class="even">
+<td>Correlation between initial beliefs and the political slant of each participant’s posts, replies, and favourites</td>
+<td><code>02_engagement</code> → <em>Initial beliefs and the political slant of each participant’s activity</em></td>
 <td></td>
 </tr>
 <tr class="odd">
@@ -266,8 +276,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="what-is-not-reproduced-here">What is not reproduced here</h3>
 <p>These statistics are in the manuscript but rely on data or procedures that are not part of this repository:</p>
 <ul>
-<li><strong>Time-on-platform</strong> (“nearly 25% of daily contributions totalled 45 minutes or more”): session-duration data are not included.</li>
-<li><strong>Correlations between belief strength and biased engagement</strong> (r = .62, .46, .51): these need per-participant favouriting records, which are not in the shared status data.</li>
 <li><strong>LLM polarity-classification reliability</strong> (71% agreement with human raters): the classification prompts, model outputs, and rater codes are on the OSF.</li>
 </ul>
 <hr>
@@ -347,10 +355,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>Every post, reply, and reblog on the platform, with topic and LLM-coded political polarity (<code>category</code>).</td>
 </tr>
 <tr class="even">
+<td><code>data/magpie/processed/combined/favourites.csv</code></td>
+<td>Every favourite: who gave it (<code>FavouriterID</code>), to which status (<code>StatusID</code>), and when.</td>
+</tr>
+<tr class="odd">
 <td><code>data/analytics/processed/{control,left,right}/visibility_events.csv</code></td>
 <td>Client-side viewport logs: one row per 1000 ms window in which a status was on screen, with the percentage visible.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>data/magpie/processed/combined/posts-seen-by-user_visibility50.Rdata</code></td>
 <td>Per-participant counts and proportions of posts seen (all threads, troll-initiated threads, other threads), built by <code>R/preprocess/summarise-posts-seen.R</code>.</td>
 </tr>
