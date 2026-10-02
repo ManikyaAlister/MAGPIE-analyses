@@ -22,27 +22,15 @@
 
 # ── Shared panel builder (used by both grid functions) ────────────────────
 # Expects: Estimate, Q2.5, Q97.5, variable (factor), comparison (factor),
-#          predictor (factor), credible (logical)
+#          predictor (factor). All points are drawn fully opaque: colour and
+#          shape only distinguish all content from non-troll content.
 make_coef_panel = function(d, title, x_label, hide_y = FALSE) {
   d <- d %>%
-    mutate(
-      legend_group = case_when(
-        comparison == "All Content"       &  credible ~ "All Content (credible)",
-        comparison == "Non-Troll Content" &  credible ~ "Non-Troll Content (credible)",
-        comparison == "All Content"       & !credible ~ "All Content (not credible)",
-        comparison == "Non-Troll Content" & !credible ~ "Non-Troll Content (not credible)"
-      ),
-      legend_group = factor(legend_group, levels = c(
-        "All Content (credible)",
-        "Non-Troll Content (credible)",
-        "All Content (not credible)",
-        "Non-Troll Content (not credible)"
-      ))
-    )
+    mutate(comparison = factor(comparison, levels = c("All Content", "Non-Troll Content")))
 
   p <- ggplot(d, aes(x = Estimate, y = variable,
-                     colour = legend_group,
-                     shape  = legend_group,
+                     colour = comparison,
+                     shape  = comparison,
                      group  = comparison)) +
     geom_vline(xintercept = 0, linetype = "dashed", colour = "grey30") +
     geom_errorbarh(
@@ -54,27 +42,13 @@ make_coef_panel = function(d, title, x_label, hide_y = FALSE) {
     geom_point(size = 3, position = position_dodge(width = 0.5)) +
     facet_wrap(~ predictor, nrow = 1) +
     scale_colour_manual(
-      values = c(
-        "All Content (credible)"           = "#E15759",
-        "All Content (not credible)"       = scales::alpha("#E15759", 0.3),
-        "Non-Troll Content (credible)"     = "#4E79A7",
-        "Non-Troll Content (not credible)" = scales::alpha("#4E79A7", 0.3)
-      ),
-      drop = FALSE   # keep all 4 levels in legend even if absent from a panel
+      values = c("All Content" = "#E15759", "Non-Troll Content" = "#4E79A7"),
+      drop = FALSE   # keep both levels in legend even if absent from a panel
     ) +
     scale_shape_manual(
-      values = c(
-        "All Content (credible)"           = 16,
-        "All Content (not credible)"       = 16,
-        "Non-Troll Content (credible)"     = 17,
-        "Non-Troll Content (not credible)" = 17
-      ),
+      values = c("All Content" = 16, "Non-Troll Content" = 17),
       drop = FALSE
     ) +
-    guides(
-      colour = guide_legend(ncol = 2),
-      shape  = "none"
-    )+
     theme_minimal(base_size = 12) +
     theme(
       strip.text       = element_text(face = "bold", size = 11),
@@ -99,9 +73,9 @@ make_coef_panel = function(d, title, x_label, hide_y = FALSE) {
 assemble_grid = function(p_beliefs, p_consensus, p_trust, p_after_list,
                           n_belief_vars, n_consensus_vars, n_trust_vars) {
 
-  # Use p_trust — most likely to contain all 4 legend_group levels
+  # Use p_trust — contains both comparison levels
   legend <- cowplot::get_legend(
-    p_trust + theme(legend.position = "bottom") # need to make sure legend is taken from a plot that has all 4 levels
+    p_trust + theme(legend.position = "bottom") 
   )
 
   no_legend <- function(p) p + theme(legend.position = "none")
