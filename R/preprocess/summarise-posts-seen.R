@@ -104,11 +104,7 @@ loadAndCombineVisibility = function(label = NULL, visibility_threshold = 0){
   )
 }
 
-# run with no filters
-loadAndCombineVisibility()
-
-# run with only 100% visibility 
-loadAndCombineVisibility(label = "_visibility100", visibility_threshold = 100)
-
+# a post counts as seen when >= 50% of it was on screen (each logged event is a
+# 1000 ms window); this is the configuration used in the manuscript
 loadAndCombineVisibility(label = "_visibility50", visibility_threshold = 50)
 

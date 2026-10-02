@@ -20,6 +20,41 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
@@ -50,61 +85,296 @@ ul.task-list li input[type="checkbox"] {
 
 <section id="magpie-analyses" class="level1">
 <h1>MAGPIE analyses</h1>
-<p>Analysis code for <em>Understanding online influence using a custom social media platform</em> (Magpie Social). Participants interacted on a bespoke Mastodon instance over a week in one of three between-subject conditions (<code>Control</code>, <code>Left</code>, <code>Right</code> troll campaigns); we measured beliefs, perceptions, trust, and experience before and after.</p>
-<p>This repository contains everything needed to reproduce the analyses and figures in the paper.</p>
-<section id="where-to-start" class="level2">
-<h2 class="anchored" data-anchor-id="where-to-start">Where to start</h2>
-<p>The four numbered documents in <a href="analysis/"><code>analysis/</code></a> are the analyses. Each is a self-contained Quarto document; reading them top to bottom walks through every result in the paper. They are also rendered in html/pdf.</p>
-<p>This project uses <a href="https://rstudio.github.io/renv/articles/renv.html">Renv</a> to enable a reproduce R environment. Type <code>renv::restore()</code> into the r console after opening the <code>.Rproj</code> file (<code>MAGPIE-analyses.Rproj</code>) to install all packages and dependencies.</p>
+<p>Analysis code and data for <em>Understanding online influence using a custom social media platform</em> (Alister, Ransom, &amp; Perfors). Participants (N = 311) interacted on a bespoke Mastodon instance (“Magpie Social”) for three days in one of three between-subject conditions (<code>Control</code>, <code>Left</code>, <code>Right</code> troll campaigns). Their beliefs, perceptions, trust, and experience were measured before and after.</p>
+<p>This repository reproduces every figure and statistic in the manuscript and the Supplementary Analyses that can be computed from the shared, de-identified data. The few exceptions are listed under <a href="#what-is-not-reproduced-here">What is not reproduced here</a>. Materials and data are also on the OSF: <a href="https://osf.io/mu9wy" class="uri">https://osf.io/mu9wy</a>.</p>
+<hr>
+<section id="quick-start-reproduce-the-paper-in-about-10-minutes" class="level2">
+<h2 class="anchored" data-anchor-id="quick-start-reproduce-the-paper-in-about-10-minutes">Quick start: reproduce the paper in about 10 minutes</h2>
+<section id="install-the-software" class="level3">
+<h3 class="anchored" data-anchor-id="install-the-software">1. Install the software</h3>
 <table class="caption-top table">
 <thead>
 <tr class="header">
-<th>Document</th>
-<th>Covers</th>
-<th>Paper</th>
+<th>Software</th>
+<th>Version used</th>
+<th>Notes</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><a href="analysis/01_demographics.qmd"><code>analysis/01_demographics.qmd</code></a></td>
-<td>Sample demographics, political identification, initial beliefs</td>
-<td>Figure 1</td>
+<td><a href="https://cran.r-project.org/">R</a></td>
+<td>4.5.3 (any 4.5.x should work)</td>
+<td></td>
 </tr>
 <tr class="even">
-<td><a href="analysis/02_engagement.qmd"><code>analysis/02_engagement.qmd</code></a></td>
-<td>Engagement/activity on the platform + chi-square tests</td>
-<td>Figure 2</td>
+<td><a href="https://quarto.org/docs/get-started/">Quarto</a></td>
+<td>1.8 (≥ 1.4 should work)</td>
+<td>Bundled with recent RStudio.</td>
 </tr>
 <tr class="odd">
-<td><a href="analysis/03_linear-modelling.qmd"><code>analysis/03_linear-modelling.qmd</code></a></td>
-<td>Bayesian models of belief/perception/trust/experience change, and the posts-seen models</td>
-<td>Figures 3–5</td>
+<td>A LaTeX distribution</td>
+<td>any</td>
+<td>Only needed for <code>04_supplementary-analyses</code> (PDF output). Easiest: <code>quarto install tinytex</code>.</td>
 </tr>
 <tr class="even">
-<td><a href="analysis/04_supplementary-analyses.qmd"><code>analysis/04_supplementary-analyses.qmd</code></a></td>
-<td>Chi-square standardised residuals, sub-measure breakdowns, sample comparison, correlation-based posts-seen analysis</td>
-<td>Supplementary</td>
+<td>C/C++ compiler toolchain</td>
+<td></td>
+<td>Needed by <code>renv::restore()</code> to build two Stan dependencies from source, and to refit any model. macOS: <code>xcode-select --install</code>. Windows: <a href="https://cran.r-project.org/bin/windows/Rtools/">Rtools45</a>. Linux: <code>build-essential</code>, plus the system libraries for <code>sf</code> (GDAL, GEOS, PROJ, UDUNITS).</td>
 </tr>
 </tbody>
 </table>
-<p>Render them with <code>quarto render</code> (configured via <a href="_quarto.yml"><code>_quarto.yml</code></a> to run from the project root and render only <code>analysis/</code>), or open the project in RStudio (<code>MAGPIE-analyses.Rproj</code>) and render individually.</p>
-<p>By default the analysis documents <strong>load pre-fitted model output</strong> (<code>run_models &lt;- FALSE</code>) from <a href="output/models/"><code>output/models/</code></a>, so they render quickly. Set <code>run_models &lt;- TRUE</code> in <code>03</code>/<code>04</code> to refit the Bayesian models from scratch (requires <code>brms</code>/Stan).</p>
-<p>The code book for the clean survey data that describes all of the measured variables is in <a href="R/preprocess/cleanPosteriorData.qmd"><code>R/preprocess/cleanPosteriorData.qmd</code></a> (after) and <a href="R/preprocess/cleanPriorData.qmd"><code>R/preprocess/cleanPiorData.qmd</code></a> (before)</p>
+<p>RStudio is optional but convenient.</p>
+</section>
+<section id="restore-the-r-package-environment" class="level3">
+<h3 class="anchored" data-anchor-id="restore-the-r-package-environment">2. Restore the R package environment</h3>
+<p>The exact package versions are recorded in <a href="renv.lock"><code>renv.lock</code></a> with <a href="https://rstudio.github.io/renv/">renv</a>. Open <code>MAGPIE-analyses.Rproj</code> in RStudio, or start R in this folder (renv then bootstraps itself from <code>.Rprofile</code>), and run:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>renv<span class="sc">::</span><span class="fu">restore</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>This installs about 200 packages into a project-local library and leaves your other R libraries untouched. It takes 5–20 minutes the first time, depending on how many packages are already cached and how many must be built from source.</p>
+<blockquote class="blockquote">
+<p><strong>Why <code>StanHeaders</code> and <code>RcppParallel</code> are pinned to older versions.</strong> <code>rstan</code> 2.32.7, the current CRAN release used by <code>brms</code>, cannot compile models against <code>StanHeaders</code> ≥ 2.33 or <code>RcppParallel</code> ≥ 6. You would see <code>symbol not found ... tbb::task_scheduler_init</code>. The lockfile therefore pins <code>StanHeaders</code> 2.32.10 and <code>RcppParallel</code> 5.1.11-2. Do not run <code>renv::update()</code> on these two packages.</p>
+</blockquote>
+</section>
+<section id="render-the-analyses" class="level3">
+<h3 class="anchored" data-anchor-id="render-the-analyses">3. Render the analyses</h3>
+<p>From a terminal in the project folder:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> render</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Or open each <code>.qmd</code> in <code>analysis/</code> in RStudio and click <strong>Render</strong>. The four documents render in 1–2 minutes in total. They load the pre-fitted Bayesian models in <a href="output/models/"><code>output/models/</code></a> (see <a href="#refitting-the-models-from-scratch">Refitting the models</a>) and write:</p>
+<ul>
+<li><code>analysis/01_demographics.html</code>, <code>02_engagement.html</code>, <code>03_linear-modelling.html</code></li>
+<li><code>analysis/04_supplementary-analyses.pdf</code>, the Supplementary Analyses document</li>
+<li>every manuscript figure, in <a href="output/figures/"><code>output/figures/</code></a></li>
+</ul>
+<p><code>quarto render</code> is configured in <a href="_quarto.yml"><code>_quarto.yml</code></a> to run every document from the project root and to render only <code>analysis/</code>.</p>
+<p>You may see harmless <code>Sys.setlocale()</code> warnings if your shell has no UTF-8 locale set.</p>
+<hr>
+</section>
+</section>
+<section id="where-each-result-comes-from" class="level2">
+<h2 class="anchored" data-anchor-id="where-each-result-comes-from">Where each result comes from</h2>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Manuscript result</th>
+<th>Document → section</th>
+<th>Output file</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Sample size per condition; gender, trans, sexual orientation, age, race, education, religion, political ID percentages</td>
+<td><code>01_demographics</code> → Demographics tables</td>
+<td></td>
+</tr>
+<tr class="even">
+<td>“No significant differences between conditions” (demographics, political ID, initial beliefs)</td>
+<td><code>01_demographics</code> → <em>Balance across conditions</em></td>
+<td></td>
+</tr>
+<tr class="odd">
+<td><strong>Figure 1</strong> (sample characteristics)</td>
+<td><code>01_demographics</code> → <em>Combined demographics plot</em></td>
+<td><code>output/figures/combined-demographics.png</code></td>
+</tr>
+<tr class="even">
+<td>Posts/replies per condition; troll share of content</td>
+<td><code>02_engagement</code> (first table)</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>χ²(6) = 278.11, composition of engagement types</td>
+<td><code>02_engagement</code>, test defined in <code>R/functions/engagement-chisq.R</code></td>
+<td></td>
+</tr>
+<tr class="even">
+<td>χ²(4) polarity tests for posts, replies, reblogs, favourites</td>
+<td><code>02_engagement</code> (table after Fig 2B)</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>χ²(2) = 64.86, friendly vs non-friendly</td>
+<td><code>02_engagement</code></td>
+<td></td>
+</tr>
+<tr class="even">
+<td>Troll posts’ extra engagement and extra replies</td>
+<td><code>02_engagement</code> (printed sentences)</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td><strong>Figure 2</strong> (engagement)</td>
+<td><code>02_engagement</code> → <em>Combine</em></td>
+<td><code>output/figures/combined-engagement.png</code></td>
+</tr>
+<tr class="even">
+<td>Before-survey means/SDs (consensus, relative belief, trust) and experience means/SDs</td>
+<td><code>03_linear-modelling</code> → <em>Initial values of measures</em></td>
+<td></td>
+</tr>
+<tr class="odd">
+<td><strong>Figure 3</strong> (condition effects on beliefs, consensus, relative belief, trust, affective polarisation)</td>
+<td><code>03_linear-modelling</code> → <em>Before/After Change variables</em></td>
+<td><code>output/figures/combined-bar-lm-change-vars-Bayes-TRUE.png</code></td>
+</tr>
+<tr class="even">
+<td><strong>Figure 4</strong> (experience measures)</td>
+<td><code>03_linear-modelling</code> → <em>Post experiment experience questions</em></td>
+<td><code>output/figures/combined-bar-lm-post-survey-Bayes-TRUE.png</code></td>
+</tr>
+<tr class="odd">
+<td>Correlation between initial beliefs and enjoyment, by condition</td>
+<td><code>03_linear-modelling</code> → <em>Did enjoyment … correlate …</em></td>
+<td></td>
+</tr>
+<tr class="even">
+<td>Posts-seen sample (n analysed per condition) and share of troll-initiated content</td>
+<td><code>03_linear-modelling</code> → posts-seen section</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td><strong>Figure 5</strong> (posts-seen coefficients)</td>
+<td><code>03_linear-modelling</code> → posts-seen section</td>
+<td><code>output/figures/posts-seen-coefficients-grid_visibility50.png</code></td>
+</tr>
+<tr class="even">
+<td>Supplementary Analysis 2 (χ² standardised residuals)</td>
+<td><code>04_supplementary-analyses</code> §2</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>Supplementary Analysis 3 (trust, affective-polarisation, relative-belief sub-measures)</td>
+<td><code>04_supplementary-analyses</code> §3</td>
+<td><code>output/figures/combined-bar-lm-aff-trust-Bayes-TRUE.png</code>, <code>…-relative-Bayes-TRUE.png</code></td>
+</tr>
+<tr class="even">
+<td>Supplementary Analysis 4 (posts-seen sample vs full sample)</td>
+<td><code>04_supplementary-analyses</code> §4</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>Supplementary Analysis 5 (correlation version of Figure 5; trust sub-measure grids)</td>
+<td><code>04_supplementary-analyses</code> §5</td>
+<td><code>output/figures/posts-seen-correlations-grid*_visibility50.png</code>, <code>posts-seen-coefficients-grid-trust-subscales_visibility50.png</code></td>
+</tr>
+</tbody>
+</table>
+<section id="what-is-not-reproduced-here" class="level3">
+<h3 class="anchored" data-anchor-id="what-is-not-reproduced-here">What is not reproduced here</h3>
+<p>These statistics are in the manuscript but rely on data or procedures that are not part of this repository:</p>
+<ul>
+<li><strong>Time-on-platform</strong> (“nearly 25% of daily contributions totalled 45 minutes or more”): session-duration data are not included.</li>
+<li><strong>Correlations between belief strength and biased engagement</strong> (r = .62, .46, .51): these need per-participant favouriting records, which are not in the shared status data.</li>
+<li><strong>LLM polarity-classification reliability</strong> (71% agreement with human raters): the classification prompts, model outputs, and rater codes are on the OSF.</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="refitting-the-models-from-scratch" class="level2">
+<h2 class="anchored" data-anchor-id="refitting-the-models-from-scratch">Refitting the models from scratch</h2>
+<p>By default the documents <strong>load saved model output</strong> (<code>run_models &lt;- FALSE</code>), because refitting takes a long time. All saved output can be regenerated from the shared data:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Models</th>
+<th>How to refit</th>
+<th>Time (10-core laptop)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Condition effects (Figures 3, 4; Supplementary Analysis 3)</td>
+<td>Set <code>run_models &lt;- TRUE</code> in the setup chunk of <code>analysis/03_linear-modelling.qmd</code> and <code>analysis/04_supplementary-analyses.qmd</code>, then render.</td>
+<td>~2 h (each model compiles its own Stan program)</td>
+</tr>
+<tr class="even">
+<td>Posts-seen data (input to Figure 5)</td>
+<td><code>Rscript R/preprocess/summarise-posts-seen.R</code>: rebuilds <code>data/magpie/processed/combined/posts-seen-by-user_visibility50.Rdata</code> from the raw visibility logs in <code>data/analytics/</code>.</td>
+<td>&lt; 1 min</td>
+</tr>
+<tr class="odd">
+<td>Posts-seen models (Figure 5, Supplementary Analysis 5)</td>
+<td><code>Rscript R/models/run-posts-seen-models.R</code>: fits 189 beta regressions and writes <code>output/models/posts-seen/</code>. Delete <code>output/models/posts-seen/models/*_visibility50.rdata</code> first; already-fitted models are skipped (<code>skip_fitted &lt;- TRUE</code>). These models use 4 chains × 20,000 post-warmup draws, because several interval endpoints lie close to zero.</td>
+<td>~25 min</td>
+</tr>
+</tbody>
+</table>
+<p>All <code>brm()</code> calls use a fixed seed (<code>seed = 2024</code>), so a refit on the same machine and package versions gives identical draws.</p>
+<p><strong>Model specification.</strong> Every condition-effect model is a Bayesian beta regression (<code>brms</code>, default priors, 4 chains × 2000 iterations) of the form <code>measure_After ~ measure_Before + Condition</code>. For after-only measures it is <code>measure ~ Condition</code>. Outcomes are rescaled to (0, 1) with the Smithson &amp; Verkuilen transformation (<code>scale_to_01()</code> in <code>R/functions/lm-functions.R</code>). The posts-seen models replace <code>Condition</code> with the proportion of posts seen of one type, are restricted to <code>Left</code>/<code>Right</code> participants with at least 50 posts seen, use 4 chains × 20,000 post-warmup draws, and define a post as “seen” when at least 50% of it was on screen for at least 1000 ms (<code>_visibility50</code>). Reported estimates are posterior means with 95% credible intervals.</p>
+<hr>
+</section>
+<section id="data" class="level2">
+<h2 class="anchored" data-anchor-id="data">Data</h2>
+<p>All files the analyses read are in <a href="data/"><code>data/</code></a>. They are de-identified, analysis-ready versions of the raw survey, platform, and analytics exports.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>File</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>data/magpie/original/combined/before.csv</code> / <code>before.Rdata</code> (<code>d_before</code>)</td>
+<td>Before survey, one row per participant (N = 311): demographics, beliefs, consensus, relative beliefs, trust, affective polarisation.</td>
+</tr>
+<tr class="even">
+<td><code>data/magpie/original/combined/after.csv</code> / <code>after.Rdata</code> (<code>d_after</code>)</td>
+<td>After survey (same measures, plus the experience questions).</td>
+</tr>
+<tr class="odd">
+<td><code>data/magpie/original/combined/demographics.csv</code></td>
+<td>Full demographics, including sexual orientation (rows for Before and After).</td>
+</tr>
+<tr class="even">
+<td><code>data/magpie/processed/combined/survey-before-after-change.Rdata</code> (<code>d_before_after_change</code>)</td>
+<td>Before, After, and Change (After − Before) for every measure, joined. This is what the models use.</td>
+</tr>
+<tr class="odd">
+<td><code>data/magpie/processed/combined/combined_statuses_with_original_annotations.csv</code></td>
+<td>Every post, reply, and reblog on the platform, with topic and LLM-coded political polarity (<code>category</code>).</td>
+</tr>
+<tr class="even">
+<td><code>data/analytics/processed/{control,left,right}/visibility_events.csv</code></td>
+<td>Client-side viewport logs: one row per 1000 ms window in which a status was on screen, with the percentage visible.</td>
+</tr>
+<tr class="odd">
+<td><code>data/magpie/processed/combined/posts-seen-by-user_visibility50.Rdata</code></td>
+<td>Per-participant counts and proportions of posts seen (all threads, troll-initiated threads, other threads), built by <code>R/preprocess/summarise-posts-seen.R</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>The variable code books are in the preprocessing notebooks <a href="R/preprocess/cleanPriorData.Rmd"><code>R/preprocess/cleanPriorData.Rmd</code></a> (Before survey) and <a href="R/preprocess/cleanPosteriorData.Rmd"><code>R/preprocess/cleanPosteriorData.Rmd</code></a> (After survey).</p>
+<p><strong>Preprocessing.</strong> The notebooks in <code>R/preprocess/</code> (<code>clean*Data.Rmd</code>, <code>mergeGlobalData.Rmd</code>, <code>data-preprocessing.R</code>, <code>fix-corrupted-IDs.R</code>) document how the raw exports were cleaned. They read raw, identifiable files that are not shared, so they are included for transparency and cannot be run from this repository. <code>summarise-posts-seen.R</code> is the exception: it runs from the shared visibility logs.</p>
+<hr>
 </section>
 <section id="repository-layout" class="level2">
 <h2 class="anchored" data-anchor-id="repository-layout">Repository layout</h2>
 <pre><code>analysis/          The four analysis documents (start here)
 R/
   functions/       Helpers sourced by the analysis documents
-  preprocess/      Data cleaning: raw data -&gt; analysis-ready data
-  models/          Model fitting (posts-seen models)
-data/              Input data the analyses load
+  models/          Stand-alone model-fitting scripts (posts-seen models)
+  preprocess/      Data cleaning (raw -&gt; analysis-ready); see "Preprocessing" above
+data/              Analysis-ready data the documents load
 output/
   figures/         Figures written by the analysis documents
-  models/          Fitted-model output the documents load
+  models/          Saved model output the documents load
+renv.lock, renv/   Package environment (restore with renv::restore())
 _quarto.yml        Project config (execute from root; render analysis/)</code></pre>
 <section id="rfunctions-sourced-by-the-analysis-documents" class="level3">
-<h3 class="anchored" data-anchor-id="rfunctions-sourced-by-the-analysis-documents"><code>R/functions/</code> — sourced by the analysis documents</h3>
+<h3 class="anchored" data-anchor-id="rfunctions-sourced-by-the-analysis-documents"><code>R/functions/</code>: sourced by the analysis documents</h3>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 50%">
@@ -123,19 +393,19 @@ _quarto.yml        Project config (execute from root; render analysis/)</code></
 </tr>
 <tr class="even">
 <td><code>lm-functions.R</code></td>
-<td>Bayesian beta / GLM model fitting + coefficient and bar plotting helpers</td>
+<td>Smithson rescaling, Bayesian beta-regression fitting (<code>runMultipleLMs</code>, <code>runModelComparisons</code>), and coefficient/bar plotting helpers</td>
 </tr>
 <tr class="odd">
 <td><code>engagement-chisq.R</code></td>
-<td>Engagement data prep and the three chi-square tests (used by <code>02</code> and <code>04</code>)</td>
+<td>Engagement data prep and the chi-square tests (used by <code>02</code> and <code>04</code>)</td>
 </tr>
 <tr class="even">
 <td><code>posts-seen-correlations-prep.R</code></td>
-<td>Computes the posts-seen correlations for the supplementary figure (<code>04</code>)</td>
+<td>Computes the posts-seen correlations for Supplementary Analysis 5 (<code>04</code>)</td>
 </tr>
 <tr class="odd">
 <td><code>posts-seen-grid-plots.R</code></td>
-<td>Builds the Figure 5 coefficient/correlation grids (<code>03</code> and <code>04</code>)</td>
+<td>Builds the Figure 5 coefficient grid and the supplementary correlation grids (<code>03</code> and <code>04</code>)</td>
 </tr>
 <tr class="even">
 <td><code>plot-linear-relationships.R</code></td>
@@ -144,10 +414,27 @@ _quarto.yml        Project config (execute from root; render analysis/)</code></
 </tbody>
 </table>
 </section>
+<section id="rmodels" class="level3">
+<h3 class="anchored" data-anchor-id="rmodels"><code>R/models/</code></h3>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Script</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>run-posts-seen-models.R</code></td>
+<td>Fits the Figure 5 posts-seen models and saves their coefficients and LOO output to <code>output/models/posts-seen/</code></td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="requirements" class="level2">
-<h2 class="anchored" data-anchor-id="requirements">Requirements</h2>
-<p>R (≥ 4.5) with <code>quarto</code>, and the packages used across the documents: <code>here</code>, <code>tidyverse</code>, <code>brms</code>, <code>ggpubr</code>, <code>patchwork</code>, <code>cowplot</code>, <code>correlation</code>, <code>dotwhisker</code>, <code>broom</code>, <code>see</code>, <code>sf</code>, <code>rnaturalearth</code>, <code>rnaturalearthdata</code>.</p>
 </section>
 </section>
 

@@ -21,6 +21,8 @@ source(here("R/functions/lm-functions.R"))
 Bayesian <- TRUE
 run_models <- FALSE
 
+set.seed(2024) # fixes geom_jitter() positions so figures are identical across renders
+
 ```
 
 ```{r}
@@ -134,7 +136,7 @@ p_list_survey_qs <- plot_lm_and_bar(
   d_bar,
   change = FALSE,
   Bayesian = Bayesian,
-  run_models = FALSE,
+  run_models = run_models,
   ytext = FALSE
 )
 p_survey_qs <- ggarrange(plotlist = p_list_survey_qs,
@@ -206,7 +208,7 @@ p_list_change_vars <- plot_lm_and_bar(
   change = TRUE,
   ytext = TRUE,
   ylim = c(-10, 10),
-  xlim = c(-0.5,0.5),
+  xlim = c(-0.6, 0.6),
   Bayesian = Bayesian,
   run_models = run_models,
   title_size = 20,
@@ -281,6 +283,29 @@ source(here("R/functions/posts-seen-grid-plots.R"))
 
 run_label = "_visibility50"
 
+# Analysis sample for Figure 5 (Left/Right participants with >= 50 posts seen)
+# and the share of posts seen that came from troll-initiated threads.
+load(here(paste0("data/magpie/processed/combined/posts-seen-by-user", run_label, ".Rdata")))
+posts_seen_sample <- d_before_after_change %>%
+  filter(Condition %in% c("Left", "Right")) %>%
+  select(UserName, Condition) %>%
+  left_join(unique_posts_seen_by_user %>% select(username, Condition, total_seen),
+            by = c(UserName = "username", "Condition")) %>%
+  left_join(unique_posts_seen_by_user_troll %>% select(username, Condition, troll_thread_seen = total_seen),
+            by = c(UserName = "username", "Condition")) %>%
+  mutate(troll_thread_seen = replace_na(troll_thread_seen, 0))
+
+posts_seen_sample %>%
+  group_by(Condition) %>%
+  summarise(N = n(),
+            `No posts-seen data` = sum(is.na(total_seen)),
+            `Analysed (>= 50 seen)` = sum(total_seen >= 50, na.rm = TRUE))
+
+posts_seen_sample %>%
+  filter(total_seen >= 50) %>%
+  summarise(`Mean % of posts seen in troll-initiated threads` = round(100 * mean(troll_thread_seen / total_seen), 1),
+            `Pooled %` = round(100 * sum(troll_thread_seen) / sum(total_seen), 1))
+
 # Main figure (Figure 5) — coefficient grid using overall trust
 p_coef_grid <- plotCoefficientsGrid(run_label = run_label, trust_type = "overall")
 ggsave(plot = p_coef_grid, filename=here(paste0("output/figures/posts-seen-coefficients-grid",run_label,".png")),
@@ -291,4 +316,3 @@ p_coef_grid
 # grid and the correlation-based grids — are produced in
 # 04_supplementary-materials.qmd.
 ```
-

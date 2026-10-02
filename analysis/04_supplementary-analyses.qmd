@@ -31,6 +31,8 @@ source(here("R/functions/posts-seen-grid-plots.R"))
 # models, and load their saved output rather than re-fitting.
 Bayesian   <- TRUE
 run_models <- FALSE
+
+set.seed(2024) # fixes geom_jitter() positions so figures are identical across renders
 ```
 
 ```{r}
@@ -147,9 +149,10 @@ component sub-measures, using the same model structure
 ## Trust and affective polarisation sub-measures
 
 The trust panel shows that, relative to the `Control`, trust in the `Left`
-condition decreased for businesses, universities, and the government, and that
-the increase in trust in other people was credibly smallest in the `Left`
-condition. Trust in the media was the only sub-measure with no credible
+condition decreased credibly for businesses and universities, and that the
+increase in trust in other people was credibly smallest in the `Left`
+condition. Trust in the government decreased in the same direction, but the
+credible interval overlaps zero, and trust in the media showed no credible
 difference from `Control`.
 
 ```{r}
@@ -263,20 +266,21 @@ beliefs (`ExtremeBeliefBefore`), perceptions of consensus
 #| label: sample-comparison
 #| fig.width: 8
 
-load(here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))
+# Same posts-seen configuration as Figure 5 (>= 50% visible for >= 1000 ms)
+load(here("data/magpie/processed/combined/posts-seen-by-user_visibility50.Rdata"))
 
 d_seen_compare <- unique_posts_seen_by_user %>%
-  # Join the troll-only proportions
+  # Join the proportions within troll-initiated threads
   left_join(
-    unique_posts_seen_by_user_nontroll %>%
+    unique_posts_seen_by_user_troll %>%
       select(username, Condition, prop_right, prop_left) %>%
       rename(prop_right_troll = prop_right,
              prop_left_troll = prop_left),
     by = c("username", "Condition")
   ) %>%
-  # Join the non-troll proportions
+  # Join the proportions within non-troll-initiated threads
   left_join(
-    unique_posts_seen_by_user_troll %>%
+    unique_posts_seen_by_user_nontroll %>%
       select(username, Condition, prop_right, prop_left) %>%
       rename(prop_right_nontroll = prop_right,
              prop_left_nontroll = prop_left),
@@ -301,12 +305,15 @@ d_survey_compare <- d_before_after_change_scale01 %>%
     by = c(UserName = "username", "Condition")
   ) %>% filter(Condition != "Control")
 
-print(paste0("Posts seen data is missing for ", sum(is.na(d_survey_compare$prop_left_nontroll)), " participants total"))
+print(paste0("Posts seen data is missing for ", sum(is.na(d_survey_compare$prop_right_all)), " participants total"))
 print("Breakdown by condition: ")
-# check number of missing in each condition
+# number missing, and number retained in the Figure 5 analysis (>= 50 posts seen)
 d_survey_compare %>%
   group_by(Condition) %>%
-  summarise(Missing = sum(is.na(prop_right_all)))
+  summarise(N          = n(),
+            Missing    = sum(is.na(prop_right_all)),
+            PctMissing = round(100 * mean(is.na(prop_right_all)), 1),
+            Analysed   = sum(total_seen >= 50, na.rm = TRUE))
 
 summarise_vars = function(data) {
   data %>%
@@ -328,7 +335,7 @@ base_data <- d_survey_compare %>% filter(Condition != "Control")
 
 summary_stats <- bind_rows(
   base_data %>% summarise_vars() %>% mutate(group = "Full Sample"),
-  base_data %>% filter(!is.na(prop_right_all)) %>% summarise_vars() %>% mutate(group = "Posts Seen Data Available")
+  base_data %>% filter(total_seen >= 50) %>% summarise_vars() %>% mutate(group = "Posts Seen Analysis Sample")
 )
 
 # Pivot to long format for plotting
@@ -368,7 +375,30 @@ ggplot(summary_long, aes(x = group, y = m, fill = group)) +
   )
 ```
 
-The means and standard errors of the baseline measures are very similar with and
+Welch t-tests comparing the participants in the posts-seen analysis with the
+`Left`/`Right` participants who were excluded (no posts-seen data, or fewer than
+50 posts seen):
+
+```{r}
+#| label: sample-comparison-tests
+d_survey_compare %>%
+  mutate(analysed = !is.na(total_seen) & total_seen >= 50) %>%
+  pivot_longer(c(BeliefBefore, PoliticalIDNum, ExtremeBeliefBefore, ConsensusPoliticsBefore, Age),
+               names_to = "Variable") %>%
+  group_by(Variable) %>%
+  summarise(
+    M_analysed = mean(value[analysed], na.rm = TRUE),
+    M_excluded = mean(value[!analysed], na.rm = TRUE),
+    n_analysed = sum(analysed & !is.na(value)),
+    n_excluded = sum(!analysed & !is.na(value)),
+    t = t.test(value[analysed], value[!analysed])$statistic,
+    p = t.test(value[analysed], value[!analysed])$p.value
+  ) %>%
+  mutate(across(where(is.double), ~ round(., 3))) %>%
+  knitr::kable()
+```
+
+The means and standard deviations of the baseline measures are very similar with and
 without the posts-seen restriction, indicating that the missing posts-seen data
 did not systematically bias the sub-sample.
 
@@ -379,6 +409,7 @@ troll-initiated content, and for non-troll-initiated content.
 ```{r}
 #| label: posts-seen-variance
 d_survey_compare %>%
+  filter(total_seen >= 50) %>% # the Figure 5 analysis sample
   group_by(Condition) %>%
   summarise(
     var_troll     = var(prop_right_troll + prop_left_troll, na.rm = TRUE),

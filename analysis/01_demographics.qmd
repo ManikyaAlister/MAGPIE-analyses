@@ -17,6 +17,8 @@ library(patchwork)
 
 
 source(here("R/functions/colour-palettes.R"))
+
+set.seed(2024) # fixes geom_jitter() positions so figures are identical across renders
 ```
 
 
@@ -90,6 +92,15 @@ demographic_table <- function(data, var, condition_var) {
 demographic_table(d_before, "Gender", "Condition")
 ```
 
+## **Age**
+
+```{r}
+d_before %>%
+  summarise(N_missing = sum(is.na(Age)),
+            Min = min(Age, na.rm = TRUE), Max = max(Age, na.rm = TRUE),
+            Mean = round(mean(Age, na.rm = TRUE), 1), SD = round(sd(Age, na.rm = TRUE), 1))
+```
+
 ## **Trans**
 
 Someone was considered trans if their gender didn't match their sex, including nonbinary/genderqueer).
@@ -100,10 +111,19 @@ demographic_table(d_before, "Trans", "Condition")
 
 ### **Orientation**
 
-Breakdown of sexual orientation of participants.
+Breakdown of sexual orientation of participants. Orientation is not stored in `before.csv`, so it is taken from the "Before" rows of `demographics.csv`. Percentages exclude the participants who did not answer.
 
 ```{r}
-#demographic_table(d_before, "Orientation", "Condition")
+d_orientation <- read_csv(here("data/magpie/original/combined/demographics.csv")) %>%
+  filter(TimePoint == "Before") %>%
+  select(UserName, Condition, Orientation, OrientationBroad) %>%
+  mutate(Condition = factor(Condition, levels = c("Left", "Control", "Right")))
+
+demographic_table(d_orientation, "OrientationBroad", "Condition")
+
+print(paste0("Not straight: ",
+             round(100 * mean(d_orientation$Orientation != "straight", na.rm = TRUE), 1),
+             "% (", sum(is.na(d_orientation$Orientation)), " missing)"))
 ```
 
 
@@ -180,7 +200,7 @@ p_education <- p_education +
 p_education 
 
 # saving it again even though the function does it automatically because original doesn't have colour palette
-ggsave(paste0("output/figures/demographics/religion_breakdown.png"),
+ggsave(paste0("output/figures/demographics/Education_breakdown.png"),
        plot=p_education,device="png",
        width=12,height=8, units="cm")
 ```
@@ -332,6 +352,28 @@ p_location
 ggsave("output/figures/demographics/location.png",
        plot=p_location,device="png",
        width=24,height=8, units="cm")
+```
+
+## Balance across conditions
+
+The manuscript states that conditions did not differ on demographics, political identification, or initial beliefs. Categorical variables are tested with chi-square tests of independence (p-values simulated because some cells are small) and continuous variables with one-way ANOVAs.
+
+```{r}
+set.seed(2024)
+balance_categorical <- map_dfr(c("Gender", "Race", "Education", "Religion", "PoliticalID"), function(v) {
+  tab <- table(d_before[[v]], d_before$Condition)
+  tibble(Variable = v,
+         `chi-square` = round(suppressWarnings(chisq.test(tab))$statistic, 2),
+         df = suppressWarnings(chisq.test(tab))$parameter,
+         `p (simulated)` = round(chisq.test(tab, simulate.p.value = TRUE, B = 10000)$p.value, 3))
+})
+balance_categorical
+
+balance_continuous <- map_dfr(c("Age", "PoliticalIDNum", "Belief", "BeliefAI", "BeliefClimate", "BeliefIsrael", "BeliefTrans"), function(v) {
+  a <- summary(aov(d_before[[v]] ~ d_before$Condition))[[1]]
+  tibble(Variable = v, F = round(a$`F value`[1], 2), df1 = a$Df[1], df2 = a$Df[2], p = round(a$`Pr(>F)`[1], 3))
+})
+balance_continuous
 ```
 
 # Priors

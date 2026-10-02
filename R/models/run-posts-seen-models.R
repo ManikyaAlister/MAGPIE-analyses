@@ -4,7 +4,10 @@ library(brms)
 source(here("R/functions/lm-functions.R"))
 
 # define run label if running a different configuration to normal that is saved separately
-run_label <- "_visibility100" # make sure this is either "null" or matches with a label with posts_seen data
+# "_visibility50" (a post counts as seen when >= 50% of it was on screen for
+# >= 1000 ms) is the configuration reported in the manuscript (Figure 5).
+# Must match a label produced by R/preprocess/summarise-posts-seen.R.
+run_label <- "_visibility50"
 
 # skip already fitted models? 
 skip_fitted <- TRUE
@@ -131,7 +134,14 @@ use_change_vec <- ifelse(outcomes %in% after_only_questions, FALSE, TRUE)
     change            = use_change_vec,
     run_models        = TRUE,
     skip_fitted = skip_fitted,
-    run_label = run_label
+    run_label = run_label,
+    # Several Figure 5 intervals have an endpoint close to zero, where the
+    # default 4,000 draws leave enough Monte Carlo error to flip whether an
+    # effect is "credible" between runs. 4 chains x 20,000 post-warmup draws
+    # (80,000 total) keep the Monte Carlo SE of the interval endpoints < ~0.03.
+    iter   = 22000,
+    warmup = 2000,
+    cores  = 4
   )
 
 #  Compute weights separately for each comparison 
@@ -149,6 +159,8 @@ outcome_groups <- c(
   "magpie_similarity",
   "trust_overall"
 ) 
+
+dir.create(here("output/models/posts-seen/weights"), recursive = TRUE, showWarnings = FALSE)
 
 for (outcome_group in outcome_groups){
   results_all      <- computeModelWeights(get(outcome_group), legend_all)

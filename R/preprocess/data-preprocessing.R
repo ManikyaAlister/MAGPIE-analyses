@@ -11,9 +11,6 @@ d_activity_annotated <-  read.csv(
 )
 
 
-# load change data
-load(here(here("data/before_after_change_data.Rdata")))
-
 # trust is in a separate filer for some reason
 d_trust <- read_csv(here("data/mastodon/files/processed/combined/trust.csv")) %>%
   select(UserName,

@@ -45,6 +45,17 @@ ggsave(paste0("output/figures/engagement/engagement-by-condition.png"),
        width=12,height=8, units="cm")
 ```
 
+Number of posts and replies written by participants in each condition, and the share of all posts and replies contributed by troll accounts.
+
+```{r}
+d_engagement_summ %>%
+  filter(Type %in% c("Post", "Reply", "Troll Post")) %>%
+  group_by(Condition) %>%
+  summarise(`User posts + replies` = sum(n[Type != "Troll Post"]),
+            `Troll posts` = sum(n[Type == "Troll Post"]),
+            `Troll share (%)` = round(100 * `Troll posts` / sum(n), 1))
+```
+
 ```{r}
 # Composition of engagement types (Post/Reply/Reblog/Favourite) across conditions.
 # Computed in the sourced script; standardised residuals are reported in the
@@ -109,11 +120,12 @@ d_summ_political_post_basic <- d_engagement_summ %>%
   mutate(engagement_per_post = total_engagement/total_posts, replies_per_post = replies/total_posts) %>%
   column_to_rownames(var = "Type")
 
-perc_troll_engagement_total <- round(1 - (d_summ_political_post_basic["Post","engagement_per_post"] / d_summ_political_post_basic["Troll Post","engagement_per_post"]),2)*100
+# troll engagement per post relative to user engagement per post (troll / user - 1)
+perc_troll_engagement_total <- round((d_summ_political_post_basic["Troll Post","engagement_per_post"] / d_summ_political_post_basic["Post","engagement_per_post"]) - 1,2)*100
 
 print(paste0("Collapsing across everything else, troll posts received ",perc_troll_engagement_total,"% more engagment than posts by regular users."))
 
-perc_troll_engagement_replies <- round(1 - (d_summ_political_post_basic["Post","replies_per_post"] / d_summ_political_post_basic["Troll Post","replies_per_post"]),2)*100
+perc_troll_engagement_replies <- round((d_summ_political_post_basic["Troll Post","replies_per_post"] / d_summ_political_post_basic["Post","replies_per_post"]) - 1,2)*100
 
 print(paste0("Collapsing across everything else, troll posts received ",perc_troll_engagement_replies,"% more replies than posts by regular users."))
 

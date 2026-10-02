@@ -12,7 +12,8 @@ runMultipleLMs = function(data,
                           variables,
                           predictors = "Condition",
                           change = FALSE,
-                          Bayesian = TRUE
+                          Bayesian = TRUE,
+                          seed = 2024
                           ) {
   model_output <-  NULL
   for (i in 1:length(variables)) {
@@ -36,8 +37,8 @@ runMultipleLMs = function(data,
         data = data,
         formula = as.formula(formula_str),
         family = Beta(),
-        cores = 2
-      
+        cores = 2,
+        seed = seed
       )
       
       summ_m <- summary(m)$fixed %>%
@@ -342,61 +343,6 @@ plot_lm_and_bar = function(variable_groups,
 }
 
 
-# load and combine posts seen data with survey data
-load_and_combine_data <- function(troll = "no_troll") {
-  
-  load(here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))
-  
-  # Select appropriate posts-seen data
-  posts_seen <- if (troll == "no_troll") {
-    unique_posts_seen_by_user_no_troll
-  } else if (troll == "all_posts") {
-    unique_posts_seen_by_user 
-  } else if (troll == "only_troll") {
-    unique_posts_seen_by_user_troll_only
-  }
-  
-  
-  
-  # Load posts-seen data
-  load(here("data/magpie/processed/combined/posts-seen-by-user.Rdata"))
-  
-  # Load replies received data
-  replies_received <- read_csv(
-    here("data/magpie/processed/combined/replies-received.csv"))# %>%
-  # keep participants with posts-seen data
-  #filter(UserName %in% posts_seen$username)
-  
-  # add participants who are missing with 
-  
-  # Load survey data
-  load(here("data/magpie/processed/combined/survey-before-after-change.Rdata"))
-  # Keep participants with posts-seen data
-  d_survey <- d_before_after_change %>%
-    filter(UserName %in% posts_seen$username)
-  
-  # Merge datasets
-  combined <- d_survey %>%
-    left_join(
-      posts_seen,
-      by = c("UserName" = "username", "Condition")
-    ) %>%
-    left_join(
-      replies_received,
-      by = c("UserName", "Condition")
-    )
-  
-  # Scale numeric variables for coefficient comparison
-  # Use as.numeric(scale()) to avoid matrix columns
-  combined_scaled <- combined %>%
-    mutate(across(where(is.numeric), ~as.numeric(scale(.))))
-  
-  list(
-    scaled = combined_scaled,
-    unscaled = combined
-  )
-}
-
 # function for labeling model runs based on predictors, outcomes, and a general run label if defined
 make_label = function(predictor_str, run_label) {
   terms <- trimws(strsplit(predictor_str, "\\+")[[1]])
@@ -412,7 +358,11 @@ runModelComparisons = function(data,
                                run_models = TRUE,
                                skip_fitted = TRUE,
                                run_label = NULL,
-                               save_dir = "output/models/posts-seen/"
+                               save_dir = "output/models/posts-seen/",
+                               seed = 2024,
+                               iter = 2000,
+                               warmup = floor(iter / 2),
+                               cores = 2
 ) {
   
   models_dir <- file.path(save_dir, "models")
@@ -461,7 +411,10 @@ runModelComparisons = function(data,
             data    = data,
             formula = as.formula(formula_str),
             family  = Beta(),
-            cores   = 2
+            cores   = cores,
+            iter    = iter,
+            warmup  = warmup,
+            seed    = seed
           )
         } else {
           # Reuse compiled Stan program — only outcome variable changes,
@@ -470,7 +423,11 @@ runModelComparisons = function(data,
             base_model, 
             formula   = as.formula(formula_str), 
             newdata   = data,
-            recompile = FALSE  # prevents recompilation when only outcome name changes
+            recompile = FALSE, # prevents recompilation when only outcome name changes
+            cores     = cores,
+            iter      = iter,
+            warmup    = warmup,
+            seed      = seed
           )
         }
         
@@ -527,6 +484,7 @@ computeModelWeights = function(variables,
     
     n_boot <- 1000
     n_obs  <- nrow(pointwise_elpd)
+    set.seed(2024)
     boot_weights <- matrix(NA, nrow = n_boot, ncol = length(loo_objects))
     
     for (b in 1:n_boot) {
