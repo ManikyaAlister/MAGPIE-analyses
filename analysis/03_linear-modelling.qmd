@@ -38,7 +38,7 @@ load(here(
 
 # Condition Effects
 
-Bayesian linear models examining how variables in the troll condition differed relative to the control.
+Bayesian beta models examining how variables in the troll condition differed relative to the control.
 
 ```{r}
 
@@ -160,7 +160,7 @@ d_before_after_change %>%
 ```
 ## Before/After Change variables
 
-Bayesian linear modelling for the variables that were measured both before and after the experiment. The general structure of the models was: `Variable After ~ Variable Before + Condition`, thus essentially measuring the change in each variable by condition. 
+Bayesian beta modelling for the variables that were measured both before and after the experiment. The general structure of the models was: `Variable After ~ Variable Before + Condition`, thus essentially measuring the change in each variable by condition. 
 
 ```{r}
 #| fig.width: 13
@@ -276,6 +276,8 @@ The Figure below shows the posterior coefficients for each content-based predict
 
 
 ```{r}
+#| fig.width: 13
+#| fig.height: 15
 # The grid-plotting functions (make_coef_panel, assemble_grid,
 # plotCoefficientsGrid, plotCorrelationsGrid) live in a shared script so that
 # both this document and 04_supplementary-materials.qmd can use them.

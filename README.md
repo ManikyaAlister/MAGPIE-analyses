@@ -99,13 +99,6 @@ locale set.
 | Supplementary Analysis 4 (posts-seen sample vs full sample) | `04_supplementary-analyses` §4 | |
 | Supplementary Analysis 5 (correlation version of Figure 5; trust sub-measure grids) | `04_supplementary-analyses` §5 | `output/figures/posts-seen-correlations-grid*_visibility50.png`, `posts-seen-coefficients-grid-trust-subscales_visibility50.png` |
 
-### What is not reproduced here
-
-These statistics are in the manuscript but rely on data or procedures that are
-not part of this repository:
-
-- **LLM polarity-classification reliability** (71% agreement with human raters): the classification prompts, model outputs, and rater codes are on the OSF.
-
 ---
 
 ## Refitting the models from scratch
