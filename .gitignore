@@ -58,3 +58,14 @@ rsconnect/
 
 /.quarto/
 **/*.quarto_ipynb
+
+# Files containing Prolific participant IDs: kept locally, never published.
+# Not used by any analysis document (only by R/preprocess/).
+data/magpie/processed/combined/combined_beliefs_wide.csv
+data/magpie/processed/combined/combined_participant_ids.csv
+data/magpie/processed/combined/combined_statuses_with_global_ids.csv
+data/magpie/processed/combined/combined_statuses_with_participant_ids.csv
+data/magpie/processed/combined/combined_thermometer.csv
+data/magpie/processed/combined/global_participant_ids.csv
+data/magpie/processed/combined/statuses_with_global_ids.csv
+data/magpie/processed/combined/corrupted_polarity_combined_statuses_with_global_ids.csv
