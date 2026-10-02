@@ -8,13 +8,13 @@
 # `$p.value`, and the cellwise standardised residuals `$stdres`):
 #
 #   chisq_composition  Composition of engagement types (Post / Reply / Reblog /
-#                      Favourite) across conditions.            X2(6) = 278.11
+#                      Favourite) across conditions.            X2(6) = 279.06
 #   chisq_polarity     Political polarity (Left / Neutral / Right) of engagement
 #                      across conditions, run separately for each engagement
 #                      type. Named list with one htest per type.
-#                      Post X2(4)=9.17, Reply 13.40, Reblog 43.39, Favourite 118.46
+#                      Post X2(4)=9.17, Reply 11.47, Reblog 38.09, Favourite 118.46
 #   chisq_friendly     Friendly vs. non-friendly engagement across conditions.
-#                                                               X2(2) = 64.86
+#                                                               X2(2) = 64.62
 #
 # It is sourced by both 02_engagement.qmd (which reports the test statistics and
 # draws the figures) and 04_supplementary-materials.qmd (which reports the
@@ -35,15 +35,34 @@ d_statuses_annotated <- read_csv(here("data/magpie/processed/combined/combined_s
          Condition = factor(Condition, levels = c("Left", "Control", "Right"))) %>%
   select(Subject:last_col()) # remove redundant columns before Subject made from csv conversion
 
-# Count how many times each StatusID appears in StatusReplyID
+# Troll accounts posted 100 scheduled statuses per troll condition: original
+# posts, replies (mostly continuing their own threads), and reposts of other
+# troll accounts' posts. Only the original posts are analysed as troll content
+# ("Troll Post"); troll-authored replies and reblogs are excluded from all
+# engagement counts, and engagement *received* by a status counts only
+# replies and reblogs made by participants. Trolls never favourited, so
+# favourites are all participant engagement.
+participant_status <- d_statuses_annotated$Troll != 1 & d_statuses_annotated$UserName != "Admin"
+
+# Count participant replies to each status
 reply_counts <- d_statuses_annotated %>%
+  filter(participant_status) %>%
   count(StatusReplyID, name = "reply_count") %>%
   rename(StatusID = StatusReplyID)
+
+# Troll reblogs of each status, removed from the platform's reblog_count
+troll_reblog_counts <- d_statuses_annotated %>%
+  filter(Troll == 1, !is.na(AccountReblog)) %>%
+  count(StatusReblogID, name = "troll_reblog_count") %>%
+  rename(StatusID = StatusReblogID)
 
 # Join back to main data
 d_statuses_annotated <- d_statuses_annotated %>%
   left_join(reply_counts, by = "StatusID") %>%
-  mutate(reply_count = replace_na(reply_count, 0))
+  left_join(troll_reblog_counts, by = "StatusID") %>%
+  mutate(reply_count = replace_na(reply_count, 0),
+         reblog_count = reblog_count - replace_na(troll_reblog_count, 0)) %>%
+  select(-troll_reblog_count)
 
 # create summary variable of engagement
 d_base_summ <- d_statuses_annotated %>%
@@ -51,6 +70,8 @@ d_base_summ <- d_statuses_annotated %>%
   rename(ResponseType = Type) %>%
   mutate(Type =
     case_when(
+      Troll == 1 & Reply ~ "Troll Reply",
+      Troll == 1 & !is.na(AccountReblog) ~ "Troll Reblog",
       Reply ~ "Reply",
       !is.na(AccountReblog) ~ "Reblog",
       Troll == 1 ~ "Troll Post",
@@ -65,7 +86,8 @@ d_base_summ <- d_statuses_annotated %>%
     .groups = "drop"
   )
 
-# Add favourites into "type" column for plotting
+# Add favourites into "type" column for plotting (includes participants'
+# favourites of troll replies)
 fav_summ <- d_base_summ %>%
   group_by(Condition, category, Topic) %>%
   summarise(
@@ -76,6 +98,10 @@ fav_summ <- d_base_summ %>%
     .groups = "drop"
   ) %>%
   mutate(n_fav = NA)
+
+# troll replies and reblogs are not analysed as activity
+d_base_summ <- d_base_summ %>%
+  filter(!Type %in% c("Troll Reply", "Troll Reblog"))
 
 # add favourites to base_sum
 d_engagement_summ <- bind_rows(d_base_summ, fav_summ) %>%
@@ -90,8 +116,8 @@ status_colours <- c("Post" = "darkgreen", "Reply" = "lightgreen", "Reblog" = "or
 
 # ── Chi-square tests reported in the manuscript ───────────────────────────────
 
-# 1. Composition of engagement types across conditions  ── X2(6) = 278.11
-#    Condition x Type (Post / Reply / Reblog / Favourite), excluding troll posts.
+# 1. Composition of engagement types across conditions  ── X2(6) = 279.06
+#    Condition x Type (Post / Reply / Reblog / Favourite), excluding troll content.
 chi_table_composition <- d_engagement_summ %>%
   filter(Type != "Troll Post") %>%
   group_by(Condition, Type) %>%
@@ -121,7 +147,7 @@ chisq_polarity <- setNames(
   engagement_types
 )
 
-# 3. Friendly vs. non-friendly engagement across conditions  ── X2(2) = 64.86
+# 3. Friendly vs. non-friendly engagement across conditions  ── X2(2) = 64.62
 #    Condition x {Friendly, non-friendly}, posts and replies only.
 friendly_counts <- d_engagement_summ %>%
   filter(Type %in% c("Post", "Reply")) %>%       # keep only Posts and Replies

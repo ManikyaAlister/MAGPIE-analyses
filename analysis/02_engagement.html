@@ -79,9 +79,9 @@ ul.task-list li input[type="checkbox"] {
 <pre><code># A tibble: 3 × 4
   Condition `User posts + replies` `Troll posts` `Troll share (%)`
   &lt;fct&gt;                      &lt;dbl&gt;         &lt;dbl&gt;             &lt;dbl&gt;
-1 Left                        2916            68               2.3
+1 Left                        2896            68               2.3
 2 Control                     2012             0               0  
-3 Right                       2427            71               2.8</code></pre>
+3 Right                       2410            71               2.9</code></pre>
 </div>
 </div>
 <div class="cell">
@@ -90,7 +90,7 @@ ul.task-list li input[type="checkbox"] {
     Pearson's Chi-squared test
 
 data:  chi_table_composition
-X-squared = 278.11, df = 6, p-value &lt; 2.2e-16</code></pre>
+X-squared = 279.06, df = 6, p-value &lt; 2.2e-16</code></pre>
 </div>
 </div>
 <div class="cell">
@@ -109,17 +109,17 @@ X-squared = 278.11, df = 6, p-value &lt; 2.2e-16</code></pre>
   `Engagement type` `chi-square`    df `p-value`
   &lt;chr&gt;                    &lt;dbl&gt; &lt;int&gt;     &lt;dbl&gt;
 1 Post                      9.17     4  5.69e- 2
-2 Reply                    13.4      4  9.47e- 3
-3 Reblog                   43.4      4  8.59e- 9
+2 Reply                    11.5      4  2.17e- 2
+3 Reblog                   38.1      4  1.07e- 7
 4 Favourite               118.       4  1.14e-24</code></pre>
 </div>
 </div>
 <div class="cell">
 <div class="cell-output cell-output-stdout">
-<pre><code>[1] "Collapsing across everything else, troll posts received 14% more engagment than posts by regular users."</code></pre>
+<pre><code>[1] "Collapsing across everything else, troll posts received 7% more engagment than posts by regular users."</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>[1] "Collapsing across everything else, troll posts received 24% more replies than posts by regular users."</code></pre>
+<pre><code>[1] "Collapsing across everything else, troll posts received 17% more replies than posts by regular users."</code></pre>
 </div>
 <div class="cell-output-display">
 <div>
@@ -145,7 +145,7 @@ X-squared = 278.11, df = 6, p-value &lt; 2.2e-16</code></pre>
     Pearson's Chi-squared test
 
 data:  chi_table_friendly
-X-squared = 64.858, df = 2, p-value = 8.246e-15</code></pre>
+X-squared = 64.623, df = 2, p-value = 9.274e-15</code></pre>
 </div>
 </div>
 <section id="replies-received" class="level1">

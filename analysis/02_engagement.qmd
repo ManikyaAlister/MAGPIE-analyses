@@ -210,8 +210,9 @@ chisq_friendly
 ```{r}
 #| plot.width: 12
 
-# get polarity of replies
+# get polarity of replies (replies written by participants only)
 d_activity_annotated_with_reply_polarity <- d_statuses_annotated %>%
+  filter(Troll != 1) %>%
   left_join(
     d_statuses_annotated %>%
       select(StatusID, category) %>%
