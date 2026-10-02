@@ -1,7 +1,7 @@
 # MAGPIE analyses
 
 Analysis code and data for *Understanding online influence using a custom social
-media platform* (Alister, Ransom, & Perfors). Participants (N = 311) interacted
+media platform*. Participants (N = 311) interacted
 on a bespoke Mastodon instance ("Magpie Social") for three days in one of three
 between-subject conditions (`Control`, `Left`, `Right` troll campaigns). Their
 beliefs, perceptions, trust, and experience were measured before and after.
